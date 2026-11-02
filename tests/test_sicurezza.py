@@ -79,6 +79,9 @@ for c in ["rm", "mv", "put", "sync", "backup", "share", "export", "import", "tra
 deve_rifiutare("preview -s (caricherebbe un'anteprima)", lambda: m._esegui("preview", "-s", SRC, "/tmp/x"))
 deve_rifiutare("cp con opzione", lambda: m._esegui("cp", "--use-pcre", SRC, DEST))
 deve_rifiutare("ls -R", lambda: m._esegui("ls", "-R", "/"))
+deve_rifiutare("cp con -l", lambda: m._esegui("cp", "-l", SRC, DEST))
+deve_rifiutare("mkdir con -l", lambda: m._esegui("mkdir", "-l", "/a"))
+deve_rifiutare("get con -p", lambda: m._esegui("get", "-p", SRC, "/tmp/x"))
 deve_rifiutare("mkdir con opzione diversa da -p", lambda: m._esegui("mkdir", "-x", "/a"))
 
 # 3. scritture fuori posto

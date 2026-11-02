@@ -3,6 +3,7 @@
 
 import json
 import os
+import posixpath
 import threading
 import time
 import traceback
@@ -192,6 +193,18 @@ class App:
             self.attivita["risultato"] = esegui_copia(self.conn, self.rif, d, decisioni, self.reg)
         self.avvia("copia", lavoro)
 
+    def sfoglia(self, percorso):
+        self._serve_collegamento()
+        base = self.cfg.get("cartella_partite") or posixpath.join(
+            posixpath.dirname(self.cfg["cartella_giocatori"].rstrip("/")), "MATCH")
+        stagione = posixpath.dirname(base.rstrip("/")) or "/"
+        p = normalizza(percorso) if percorso else base
+        if not (p + "/").startswith(stagione.rstrip("/") + "/"):
+            p = base  # si sfoglia solo dentro la stagione
+        cartelle, foto = self.conn.elenca_cartelle(p)
+        return {"percorso": p, "su": posixpath.dirname(p) if p.rstrip("/") != stagione.rstrip("/") else None,
+                "cartelle": cartelle, "foto": foto}
+
     def _cartella_lavoro(self, lavoro_id):
         esistenti = os.listdir(self.lavori) if os.path.isdir(self.lavori) else []
         if lavoro_id not in esistenti:
@@ -311,6 +324,8 @@ def _gestore(app):
                 elif parti == ["api", "impara"]:
                     app.impara(bool(c.get("tutti")), c.get("solo"))
                     r = {"ok": True}
+                elif parti == ["api", "sfoglia"]:
+                    r = app.sfoglia(c.get("percorso", ""))
                 elif parti == ["api", "escludi"]:
                     app.escludi(c["nome"], bool(c["escluso"]))
                     r = {"ok": True}
@@ -392,6 +407,15 @@ main{max-width:1180px;margin:0 auto;padding:20px 24px 80px;display:grid;grid-tem
 .registro .ora{color:var(--tenue);font-variant-numeric:tabular-nums;flex:none}
 .registro .ok{color:var(--ok)}.registro .avviso{color:var(--avv)}.registro .errore{color:var(--err);font-weight:600}
 .esito{margin-top:12px}
+.sfoglia{border:1px solid var(--bordo);border-radius:10px;margin-top:12px;overflow:hidden}
+.briciole{background:var(--fondo);padding:8px 12px;font-size:13px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.briciole a{cursor:pointer;text-decoration:underline}
+.cartelle{max-height:300px;overflow:auto}
+.cartelle div{padding:9px 12px;border-top:1px solid var(--bordo);cursor:pointer;display:flex;gap:8px;align-items:center}
+.cartelle div:hover{background:var(--fondo)}
+.cartelle div.foto{font-weight:700}
+.cartelle .vuota{color:var(--tenue);cursor:default}
+#sfogliaAz{padding:0 12px 12px}
 #elenco table td{vertical-align:middle}
 #elenco .az{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
 #elenco button{padding:5px 10px;font-size:13px;font-weight:500}
@@ -423,10 +447,19 @@ footer{max-width:1180px;margin:0 auto;padding:0 24px 30px;color:var(--tenue);fon
  </section>
  <section class="carta">
   <h2>2 · Smista una partita</h2>
-  <p class="nota">Incolla il percorso della cartella delle foto su MEGA. Va bene anche copiato dalla barra di MEGA (Cloud drive › 2026-27 › MATCH › …).</p>
-  <input id="percorso" placeholder="2026-27/MATCH/SERIEBKT/G10_Sudtirol_Cesena_1_1/Foto">
-  <div class="riga"><button class="primo" id="bControlla">Controlla</button></div>
+  <p class="nota">Scegli su MEGA la cartella <b>Foto</b> della partita: competizione › partita › Foto.</p>
+  <div class="riga" style="margin-top:0"><button class="primo" id="bSfoglia">Sfoglia le cartelle su MEGA…</button></div>
+  <div id="sfoglia" hidden class="sfoglia">
+   <div class="briciole" id="briciole"></div>
+   <div id="cartelle" class="cartelle"></div>
+   <div class="riga" id="sfogliaAz"></div>
+  </div>
+  <details style="margin-top:10px"><summary class="nota" style="cursor:pointer;margin:0">oppure incolla il percorso a mano</summary>
+  <input id="percorso" style="margin-top:8px" placeholder="2026-27/MATCH/SERIEBKT/G10_Sudtirol_Cesena_1_1/Foto">
+  <div class="riga"><button id="bControlla">Controlla</button></div></details>
   <div id="dest" hidden class="dest">
+   <div class="nota" style="margin:0">Cartella scelta:</div>
+   <div class="percorso" id="destOrig" style="margin-bottom:8px"></div>
    <div class="nota" style="margin:0">Le foto riconosciute andranno in:</div>
    <div class="percorso" id="destPercorso"></div>
    <div class="campi"><div><label>Competizione</label><input id="comp"></div><div><label>Partita</label><input id="evento"></div></div>
@@ -468,7 +501,7 @@ async function aggiorna(){
   $("#nG").textContent=s.persone.giocatori;$("#nS").textContent=s.persone.staff;
   $("#deboli").innerHTML=s.persone.deboli.length?`<div class="avviso">Riconoscimento debole per: <b>${s.persone.deboli.map(esc).join(", ")}</b>. Apri «Elenco delle persone» qui sotto e premi «Primi piani…» accanto al nome.</div>`:"";
   const a=s.attivita, occ=a.in_corso||!s.account;
-  for(const b of ["#bImpara","#bReimpara","#bControlla","#bSmista","#bProva"])$(b).disabled=occ;
+  for(const b of ["#bImpara","#bReimpara","#bControlla","#bSmista","#bProva","#bSfoglia"])$(b).disabled=occ;
   const r=s.registro;
   $("#fase").textContent=a.in_corso?(r.fase||"Al lavoro…"):"In attesa";
   $("#barra").style.width=a.in_corso&&r.n?(100*r.i/r.n)+"%":"0";
@@ -519,14 +552,31 @@ function mostraLavori(L){
     else st=`<a href="/l/${encodeURIComponent(l.id)}"><span class="etich da">Da rivedere →</span></a>`;
     return `<tr><td>${esc(l.evento)}<br><span class="nota">${esc(l.competizione)}</span></td><td>${esc(l.creato)}</td><td>${l.foto}</td><td>${st}</td></tr>`}).join("")+"</table>";
 }
+async function apri(percorso){
+  $("#sfoglia").hidden=false;$("#cartelle").innerHTML='<div class="vuota">Apro la cartella su MEGA…</div>';$("#sfogliaAz").innerHTML="";
+  let r;try{r=await api("/api/sfoglia",{percorso})}catch(e){$("#cartelle").innerHTML=`<div class="vuota">${esc(e.message)}</div>`;return}
+  const parti=r.percorso.split("/").filter(Boolean);
+  $("#briciole").innerHTML=(r.su!==null?`<a data-p="${esc(r.su)}">↑ indietro</a> · `:"")+parti.map((p,i)=>`<span>${esc(p)}</span>`).join(" › ");
+  $("#briciole").querySelectorAll("a").forEach(a=>a.onclick=()=>apri(a.dataset.p));
+  const ord=[...r.cartelle].sort((a,b)=>(b=="Foto")-(a=="Foto")||a.localeCompare(b,"it",{numeric:true}));
+  $("#cartelle").innerHTML=ord.length?ord.map(c=>`<div data-c="${esc(c)}" class="${c=="Foto"?"foto":""}">📁 ${esc(c)}</div>`).join(""):'<div class="vuota">Nessuna sottocartella.</div>';
+  $("#cartelle").querySelectorAll("[data-c]").forEach(d=>d.onclick=()=>apri(r.percorso.replace(/\/$/,"")+"/"+d.dataset.c));
+  if(r.foto||parti[parti.length-1]=="Foto"){
+    $("#sfogliaAz").innerHTML=`<button class="primo" id="bUsa">Usa questa cartella</button> <span class="nota">${r.foto} foto qui`+(r.cartelle.length?` + sottocartelle dei fotografi`:"")+`</span>`;
+    $("#bUsa").onclick=()=>{$("#percorso").value=r.percorso;$("#sfoglia").hidden=true;controlla()}}
+  else if(r.cartelle.includes("Foto"))$("#sfogliaAz").innerHTML='<span class="nota">Apri la cartella <b>Foto</b> per selezionarla.</span>';
+}
+$("#bSfoglia").onclick=()=>apri("");
 $("#bImpara").onclick=()=>api("/api/impara",{tutti:false}).catch(avvisa);
 $("#bReimpara").onclick=()=>{if(confirm("Reimparo tutti i volti da zero? Ci vorrà un po'."))api("/api/impara",{tutti:true}).catch(avvisa)};
 let C=null;
-$("#bControlla").onclick=async()=>{const b=$("#bControlla");b.textContent="Controllo…";
+$("#bControlla").onclick=()=>controlla();
+async function controlla(){const b=$("#bControlla");b.textContent="Controllo…";$("#dest").hidden=true;
   try{C=await api("/api/controlla",{percorso:$("#percorso").value,prova:true});
-    $("#comp").value=C.competizione;$("#evento").value=C.evento;$("#esistente").value=C.esistente;aggDest();$("#dest").hidden=false;
+    $("#destOrig").textContent=C.sorgente;$("#comp").value=C.competizione;$("#evento").value=C.evento;$("#esistente").value=C.esistente;aggDest();$("#dest").hidden=false;
     if(!C.competizione)alert("Non riconosco competizione e partita dal percorso: scrivile tu nei due campi.");
-  }catch(e){avvisa(e)}finally{b.textContent="Controlla"}};
+    $("#dest").scrollIntoView({behavior:"smooth",block:"nearest"});
+  }catch(e){avvisa(e)}finally{b.textContent="Controlla"}}
 function aggDest(){$("#destPercorso").textContent="PLAYERS / <NOME> / "+($("#comp").value||"?").toUpperCase()+" / "+($("#evento").value||"?").toUpperCase()}
 $("#comp").oninput=aggDest;$("#evento").oninput=aggDest;
 $("#percorso").oninput=()=>{$("#dest").hidden=true};

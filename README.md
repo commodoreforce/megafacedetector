@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **1.6** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
+Versione **1.7** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
 
 Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro cartelle:
 
@@ -89,8 +89,9 @@ nuovo «Impara i volti nuovi»: impara solo i nuovi.
 
 ### Dopo ogni partita
 
-1. In **«Smista una partita»** incolla il percorso della cartella `Foto`
-   (va bene anche copiato dalla barra di MEGA) e premi **«Controlla»**.
+1. In **«Smista una partita»** premi **«Sfoglia le cartelle su MEGA…»**, entra nella
+   competizione e nella partita, apri la cartella **Foto** e premi **«Usa questa cartella»**.
+   (Si può anche incollare il percorso a mano.)
 2. Controlla la destinazione proposta (es. `PLAYERS / <NOME> / SERIE BKT / G10_SUDTIROL_CESENA`)
    e premi **«Avvia lo smistamento»**. Lo script scarica e analizza una foto alla volta.
 3. Alla fine premi **«Apri la revisione»**:
@@ -122,6 +123,7 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 
 | Voce | A cosa serve |
 |---|---|
+| `cartella_partite` | da dove parte «Sfoglia» (es. `/2026-27/MATCH`) |
 | `cartella_giocatori`, `cartella_staff` | dove sono le cartelle personali (cambiare a ogni stagione) |
 | `competizioni` | come si traducono i nomi: `SERIEBKT` → `SERIE BKT`, ecc. |
 | `nome_partita` | maiuscolo e senza risultato (`G10_SUDTIROL_CESENA`) |
@@ -146,6 +148,7 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 
 ## Versioni
 
+- **1.7** (2 novembre 2026): pulsante «Sfoglia» per scegliere la cartella della partita su MEGA senza scriverla.
 - **1.6** (2 novembre 2026): elenco delle persone nell'app, con «Escludi» per le cartelle che non sono persone e caricamento dei primi piani dal browser; corrette le righe di intestazione di MEGAcmd lette come nomi.
 - **1.5** (2 novembre 2026): corretto il collegamento a MEGAcmd sul Mac ("mega-exec: command not found").
 - **1.4** (2 novembre 2026): semaforo del collegamento a MEGA, ricontrollo automatico, riconoscimento più robusto dell'account collegato.

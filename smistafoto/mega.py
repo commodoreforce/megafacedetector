@@ -107,8 +107,9 @@ class Mega:
     def _esegui(self, comando, *argomenti, attesa=900):
         if comando not in COMANDI_CONSENTITI:
             raise OperazioneVietata(f"Comando MEGA non consentito: {comando}")
-        if any(str(a).startswith("-") and a != "-p" for a in argomenti) or \
-                ("-p" in argomenti and comando != "mkdir"):
+        # opzioni ammesse: solo -p per mkdir e -l per ls (elenco dettagliato, sola lettura)
+        ammesse = {"mkdir": {"-p"}, "ls": {"-l"}}.get(comando, set())
+        if any(str(a).startswith("-") and a not in ammesse for a in argomenti):
             raise OperazioneVietata(f"Opzione non consentita per {comando}: {argomenti}")
         exe = os.path.join(self.cartella, "mega-" + comando + (".bat" if os.name == "nt" else ""))
         try:
@@ -148,6 +149,22 @@ class Mega:
         # MEGAcmd può stampare un'intestazione con il percorso ("/2026-27/PLAYERS:"): non è un nome
         return [r.strip() for r in out.splitlines()
                 if r.strip() and not (r.strip().endswith(":") and "/" in r)]
+
+    def elenca_cartelle(self, cartella):
+        """Per sfogliare: (sottocartelle, numero di foto) di una cartella. Solo lettura."""
+        rc, out, err = self._esegui("ls", "-l", _pulito(cartella), attesa=120)
+        if rc != 0:
+            raise RuntimeError(f"Non riesco ad aprire {cartella}: {(err or out).strip()[:200]}")
+        cartelle, foto = [], 0
+        for riga in out.splitlines():
+            m = re.match(r"^(\S{4})\s+\S+\s+\S+\s+\d{2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\s+(.+)$", riga.strip())
+            if not m:
+                continue
+            if m.group(1).startswith("d"):
+                cartelle.append(m.group(2))
+            elif e_foto(m.group(2)):
+                foto += 1
+        return cartelle, foto
 
     def esiste(self, percorso):
         """True se il percorso esiste su MEGA. In caso di dubbio risponde True,
@@ -246,6 +263,14 @@ class CartellaLocale:
 
     def esiste(self, percorso):
         return os.path.exists(self._vero(percorso))
+
+    def elenca_cartelle(self, cartella):
+        v = self._vero(cartella)
+        if not os.path.isdir(v):
+            raise RuntimeError(f"Non riesco ad aprire {cartella}")
+        nomi = sorted(os.listdir(v))
+        return ([n for n in nomi if os.path.isdir(os.path.join(v, n))],
+                sum(1 for n in nomi if e_foto(n)))
 
     def trova_foto(self, cartella):
         v = self._vero(cartella)
