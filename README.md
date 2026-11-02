@@ -12,6 +12,29 @@ Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro ca
 Tutto gira sul computer: le foto non vengono mandate a nessun servizio esterno.
 **Non copia mai niente senza la vostra conferma** nella pagina di revisione.
 
+## Sicurezza del cloud
+
+MEGA è l'archivio storico del club, senza altre copie. Per questo lo script ha regole
+rigide scritte nel codice (`smistafoto/mega.py`), controllate prima di ogni comando:
+
+- **Usa solo comandi di lettura e di creazione**: `whoami`, `ls`, `find`, `get`, `preview`,
+  `mkdir`, `cp`. Qualsiasi altro comando di MEGAcmd (cancellare, spostare, caricare,
+  sincronizzare, condividere...) viene rifiutato prima di partire.
+- **Non cancella, non sposta e non rinomina nulla su MEGA.** Non esiste nessuna
+  funzione che lo faccia.
+- **Non sovrascrive mai**: prima di ogni copia verifica che il file non esista già.
+  Se esiste, o se la verifica non riesce, la copia non si fa.
+- **Scrive solo dentro `PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>/`.** Le cartelle `MATCH`
+  vengono solo lette.
+- Percorsi con `..` o caratteri jolly (`*`, `?`) sono rifiutati.
+
+Il file `tests/test_sicurezza.py` prova tutte queste regole senza toccare MEGA:
+`python3 tests/test_sicurezza.py` deve finire con **TUTTO OK**.
+
+Una cosa resta fuori dal controllo dello script: chi usa MEGAcmd a mano, nella sua
+finestra, ha tutti i permessi dell'account. Nella finestra di MEGAcmd non va scritto
+nessun comando oltre a `login`.
+
 ---
 
 ## 1. Installazione (una volta sola)
@@ -96,7 +119,7 @@ non impara proprio dalle foto su cui viene giudicato. Poi rilancia **5) Reimpara
 | `prefisso_fotografo` | aggiunge il nome della sottocartella del fotografo al file |
 | `soglia_sicura` | più alta = meno errori ma più foto da verificare |
 | `soglia_dubbia` | sotto questa soglia un volto viene ignorato (avversari, pubblico) |
-| `modalita` | `megacmd`, oppure `cartella_locale` + `radice_locale` se usate MEGA Desktop sincronizzato |
+| `modalita` | sempre `megacmd` (`cartella_locale` serve solo per i test) |
 
 ## 6. Privacy
 

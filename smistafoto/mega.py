@@ -1,5 +1,20 @@
-"""Accesso alle cartelle: MEGA tramite MEGAcmd, oppure una cartella locale
-(per chi usa la sincronizzazione di MEGA Desktop, e per i test)."""
+"""Accesso alle cartelle su MEGA tramite MEGAcmd.
+
+SICUREZZA DEL CLOUD — regole rigide, verificate prima di ogni comando:
+  1. Si possono eseguire SOLO questi comandi MEGAcmd: whoami, ls, find (lettura),
+     get, preview (download sul computer), mkdir, cp (creazione di cose nuove).
+     Qualsiasi altro comando (rm, mv, put, sync, backup, share, export, import,
+     transfers, ...) viene rifiutato dal programma prima di partire.
+  2. Si scrive SOLO dentro la cartella dei giocatori (es. /2026-27/PLAYERS),
+     e solo in sottocartelle di evento: PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>/.
+  3. Una copia non sovrascrive MAI: prima si verifica su MEGA che il file di
+     destinazione non esista; se esiste, o se la verifica non è possibile,
+     la copia non si fa.
+  4. Percorsi con caratteri jolly (* ?) sono rifiutati, per evitare che un
+     comando agisca su più file del previsto.
+  5. Le cartelle di origine (MATCH/...) vengono solo lette e scaricate.
+Nessuna funzione del programma cancella, sposta o rinomina file su MEGA.
+"""
 
 import os
 import posixpath
@@ -8,6 +23,13 @@ import subprocess
 import sys
 
 ESTENSIONI_FOTO = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp"}
+
+COMANDI_CONSENTITI = {"whoami", "ls", "find", "get", "preview", "mkdir", "cp"}
+CARATTERI_VIETATI = set("*?")
+
+
+class OperazioneVietata(RuntimeError):
+    """Un'operazione che violerebbe le regole di sicurezza del cloud."""
 
 
 def e_foto(percorso):
@@ -30,12 +52,34 @@ def _decodifica(b):
         return b.decode("cp1252", errors="replace")
 
 
+def _pulito(percorso):
+    """Percorso assoluto, senza '..' né caratteri jolly. Altrimenti errore."""
+    if any(c in CARATTERI_VIETATI for c in percorso):
+        raise OperazioneVietata(f"Percorso con caratteri non ammessi: {percorso}")
+    parti = [p for p in percorso.split("/") if p]
+    if any(p in (".", "..") for p in parti):
+        raise OperazioneVietata(f"Percorso non ammesso: {percorso}")
+    return "/" + "/".join(parti)
+
+
+def _livelli_sotto(percorso, radice):
+    """Quanti livelli sta 'percorso' sotto 'radice' (None se non ci sta dentro)."""
+    p, r = _pulito(percorso).split("/")[1:], _pulito(radice).split("/")[1:]
+    if len(p) <= len(r) or p[:len(r)] != r:
+        return None
+    return len(p) - len(r)
+
+
 class Mega:
-    """Usa i comandi di MEGAcmd (mega-find, mega-get, mega-cp...)."""
+    """Usa i comandi di MEGAcmd, con le regole di sicurezza descritte sopra."""
 
-    temporaneo = True  # i file scaricati si possono cancellare dopo l'uso
+    temporaneo = True  # i file scaricati sul computer si cancellano dopo l'uso
 
-    def __init__(self):
+    def __init__(self, radice_scrittura):
+        # tutte le scritture devono stare sotto questa cartella (PLAYERS)
+        self.radice_scrittura = _pulito(radice_scrittura)
+        if self.radice_scrittura.count("/") < 2:
+            raise OperazioneVietata("La cartella dei giocatori in config.json è troppo generica.")
         self.cartella = self._trova_megacmd()
         if not self.cartella:
             raise RuntimeError(
@@ -60,9 +104,23 @@ class Mega:
         return None
 
     def _esegui(self, comando, *argomenti):
+        if comando not in COMANDI_CONSENTITI:
+            raise OperazioneVietata(f"Comando MEGA non consentito: {comando}")
+        if any(str(a).startswith("-") and a != "-p" for a in argomenti) or \
+                ("-p" in argomenti and comando != "mkdir"):
+            raise OperazioneVietata(f"Opzione non consentita per {comando}: {argomenti}")
         exe = os.path.join(self.cartella, "mega-" + comando + (".bat" if os.name == "nt" else ""))
         r = subprocess.run([exe, *argomenti], capture_output=True)
         return r.returncode, _decodifica(r.stdout), _decodifica(r.stderr)
+
+    def _controlla_scrittura(self, percorso, livelli_minimi):
+        n = _livelli_sotto(percorso, self.radice_scrittura)
+        if n is None or n < livelli_minimi:
+            raise OperazioneVietata(
+                f"Scrittura fuori dalle cartelle consentite: {percorso} "
+                f"(consentito solo dentro {self.radice_scrittura}/<NOME>/<COMPETIZIONE>/<EVENTO>)")
+
+    # ---------------------------------------------------------------- lettura
 
     def chi_sono(self):
         rc, out, _ = self._esegui("whoami")
@@ -70,13 +128,23 @@ class Mega:
 
     def elenca_nomi(self, cartella):
         """Nomi contenuti in una cartella (non ricorsivo). Cartella assente = []."""
-        rc, out, _ = self._esegui("ls", cartella)
+        rc, out, _ = self._esegui("ls", _pulito(cartella))
         if rc != 0:
             return []
         return [r.strip() for r in out.splitlines() if r.strip()]
 
+    def esiste(self, percorso):
+        """True se il percorso esiste su MEGA. In caso di dubbio risponde True,
+        così la copia non parte."""
+        rc, out, err = self._esegui("ls", _pulito(percorso))
+        if rc == 0:
+            return True
+        testo = (out + err).lower()
+        return not any(s in testo for s in ("couldn't find", "not found", "no such", "non trovat"))
+
     def trova_foto(self, cartella):
         """Tutte le foto dentro una cartella e le sue sottocartelle."""
+        cartella = _pulito(cartella)
         rc, out, err = self._esegui("find", cartella)
         if rc != 0:
             raise RuntimeError(f"MEGA non trova la cartella {cartella}: {err.strip()}")
@@ -92,19 +160,23 @@ class Mega:
                 p = "/" + riga
             else:
                 p = posixpath.join(cartella, riga)
-            if e_foto(p):
+            if e_foto(p) and not any(c in CARATTERI_VIETATI for c in p):
                 foto.append(p)
         return sorted(foto)
 
+    # ---------------------------------------------- download (solo sul computer)
+
     def scarica_cartella(self, remota, locale):
         os.makedirs(locale, exist_ok=True)
-        rc, _, err = self._esegui("get", remota, locale)
+        rc, _, err = self._esegui("get", _pulito(remota), locale)
         if rc != 0:
             raise RuntimeError(f"Download non riuscito: {err.strip()}")
         return os.path.join(locale, posixpath.basename(remota.rstrip("/")))
 
     def foto_per_imparare(self, remota, file_locale):
-        """Scarica l'anteprima (circa 1000 px, leggera); se manca, l'originale."""
+        """Scarica l'anteprima (circa 1000 px, leggera); se manca, l'originale.
+        mega-preview senza opzioni scarica soltanto: non modifica il file su MEGA."""
+        remota = _pulito(remota)
         os.makedirs(os.path.dirname(file_locale), exist_ok=True)
         rc, _, _ = self._esegui("preview", remota, file_locale)
         if rc == 0 and os.path.exists(file_locale) and os.path.getsize(file_locale) > 0:
@@ -112,27 +184,43 @@ class Mega:
         rc, _, _ = self._esegui("get", remota, file_locale)
         return file_locale if rc == 0 and os.path.exists(file_locale) else None
 
+    # ---------------------------------------- scrittura (solo creazione di cose nuove)
+
     def crea_cartella(self, cartella):
-        self._esegui("mkdir", "-p", cartella)
+        # PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>  -> almeno 3 livelli sotto PLAYERS
+        self._controlla_scrittura(cartella, 3)
+        self._esegui("mkdir", "-p", _pulito(cartella))
 
     def copia(self, origine, destinazione):
+        """Copia un file dentro MEGA. Rifiuta se la destinazione esiste già."""
+        origine, destinazione = _pulito(origine), _pulito(destinazione)
+        # PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>/<file> -> almeno 4 livelli
+        self._controlla_scrittura(destinazione, 4)
+        if _livelli_sotto(origine, self.radice_scrittura) is not None:
+            raise OperazioneVietata("Le foto di origine non possono stare dentro PLAYERS.")
+        if not e_foto(destinazione):
+            raise OperazioneVietata(f"La destinazione non è una foto: {destinazione}")
+        if self.esiste(destinazione):
+            raise OperazioneVietata(f"Esiste già, non sovrascrivo: {destinazione}")
         rc, _, err = self._esegui("cp", origine, destinazione)
         if rc != 0:
             raise RuntimeError(err.strip() or "copia non riuscita")
 
 
 class CartellaLocale:
-    """Stessa interfaccia, ma su una cartella del computer (MEGA Desktop sincronizzato)."""
+    """SOLO PER I TEST: stessa interfaccia, su una cartella del computer.
+    Anche qui non si cancella e non si sovrascrive nulla."""
 
     temporaneo = False  # i file sono gli originali: non si cancellano mai
 
-    def __init__(self, radice):
+    def __init__(self, radice, radice_scrittura):
         if not os.path.isdir(radice):
             raise RuntimeError(f"La cartella {radice} non esiste.")
         self.radice = radice
+        self.radice_scrittura = _pulito(radice_scrittura)
 
     def _vero(self, remoto):
-        return os.path.join(self.radice, *[p for p in remoto.split("/") if p])
+        return os.path.join(self.radice, *_pulito(remoto).split("/")[1:])
 
     def chi_sono(self):
         return "cartella locale " + self.radice
@@ -140,6 +228,9 @@ class CartellaLocale:
     def elenca_nomi(self, cartella):
         v = self._vero(cartella)
         return sorted(os.listdir(v)) if os.path.isdir(v) else []
+
+    def esiste(self, percorso):
+        return os.path.exists(self._vero(percorso))
 
     def trova_foto(self, cartella):
         v = self._vero(cartella)
@@ -160,13 +251,20 @@ class CartellaLocale:
         return self._vero(remota)
 
     def crea_cartella(self, cartella):
+        n = _livelli_sotto(cartella, self.radice_scrittura)
+        if n is None or n < 3:
+            raise OperazioneVietata(f"Scrittura fuori dalle cartelle consentite: {cartella}")
         os.makedirs(self._vero(cartella), exist_ok=True)
 
     def copia(self, origine, destinazione):
-        shutil.copy2(self._vero(origine), self._vero(destinazione))
+        n = _livelli_sotto(destinazione, self.radice_scrittura)
+        if n is None or n < 4:
+            raise OperazioneVietata(f"Scrittura fuori dalle cartelle consentite: {destinazione}")
+        with open(self._vero(origine), "rb") as src, open(self._vero(destinazione), "xb") as dst:
+            shutil.copyfileobj(src, dst)  # "x": fallisce se il file esiste già
 
 
 def collegamento(cfg):
     if cfg.get("modalita") == "cartella_locale":
-        return CartellaLocale(cfg["radice_locale"])
-    return Mega()
+        return CartellaLocale(cfg["radice_locale"], cfg["cartella_giocatori"])
+    return Mega(cfg["cartella_giocatori"])
