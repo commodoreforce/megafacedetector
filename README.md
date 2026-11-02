@@ -1,5 +1,7 @@
 # Smista Foto · Cesena FC
 
+Versione **1.2** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
+
 Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro cartelle:
 
 ```
@@ -105,9 +107,8 @@ risultato con le cartelle fatte a mano, **senza copiare nulla**. Dice quante fot
 avrebbe messo giuste, quante sbagliate e quante mancate, e salva il dettaglio in
 `lavori/<partita>/prova.csv`.
 
-Per una prova onesta, prima di imparare i volti scrivi il nome della partita di prova
-in `config.json` → `"escludi_da_imparare": ["G10_SUDTIROL_CESENA"]`, così lo script
-non impara proprio dalle foto su cui viene giudicato. Poi rilancia **5) Reimpara tutti**.
+Lo script trova da solo la cartella della partita nelle cartelle dei giocatori e,
+per una prova onesta, ignora i volti che aveva imparato proprio da quella partita.
 
 ## 5. Impostazioni (`config.json`)
 
@@ -134,3 +135,9 @@ non impara proprio dalle foto su cui viene giudicato. Poi rilancia **5) Reimpara
 - **"MEGAcmd non è collegato"**: apri MEGAcmd e fai `login`.
 - **La pagina non si apre**: copia nel browser l'indirizzo `http://127.0.0.1:...` scritto nella finestra.
 - **Lento**: è normale alla prima analisi di una partita grande; il computer può essere usato per altro.
+
+## Versioni
+
+- **1.2** (2 novembre 2026): la prova pilota esclude da sola la partita di prova; numero di versione nel menu.
+- **1.1** (2 novembre 2026): regole di sicurezza rigide per MEGA.
+- **1.0** (2 novembre 2026): prima versione.

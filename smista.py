@@ -13,6 +13,8 @@ import sys
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+from smistafoto import VERSIONE  # noqa: E402
+
 QUI = os.path.dirname(os.path.abspath(__file__))
 DATI = os.path.join(QUI, "dati")
 LAVORI = os.path.join(QUI, "lavori")
@@ -61,15 +63,24 @@ def _chiedi_evento(cfg, sorgente):
     return comp, evento
 
 
-def _analizza(sorgente):
-    from smistafoto.flussi import analizza_cartella
+def _analizza(sorgente, prova=False):
+    from smistafoto.flussi import analizza_cartella, trova_cartella_esistente
     from smistafoto.mega import normalizza
     cfg, conn, volti, rif = prepara()
     sorgente = normalizza(sorgente or chiedi(
         "\nIncolla il percorso della cartella da smistare\n(es. 2026-27/MATCH/SERIEBKT/G10_Sudtirol_Cesena_1_1/Foto)"))
     comp, evento = _chiedi_evento(cfg, sorgente)
+    esistente = None
+    if prova:
+        # la cartella della partita già smistata a mano, nelle cartelle dei giocatori
+        esistente = trova_cartella_esistente(conn, rif, comp, evento) or chiedi(
+            "Non trovo la partita nelle cartelle dei giocatori. Come si chiama la cartella?", evento)
+        print(f"Confronto con lo smistamento a mano in:  <NOME>/{comp}/{esistente}")
+        # lo script non deve conoscere già le foto su cui viene giudicato
+        rif, tolte = rif.senza(f"/{comp}/{esistente}/")
+        print(f"Per una prova onesta ignoro {tolte} volti imparati proprio da questa partita.")
     lavoro = analizza_cartella(cfg, conn, volti, rif, sorgente, comp, evento, LAVORI)
-    return conn, rif, lavoro, evento
+    return conn, rif, lavoro, esistente
 
 
 def cmd_smista(sorgente=None):
@@ -80,8 +91,7 @@ def cmd_smista(sorgente=None):
 
 def cmd_prova(sorgente=None):
     from smistafoto.flussi import confronta
-    conn, _, lavoro, evento = _analizza(sorgente)
-    esistente = chiedi("Come si chiama la cartella della partita già smistata a mano", evento)
+    conn, _, lavoro, esistente = _analizza(sorgente, prova=True)
     confronta(conn, lavoro, esistente)
 
 
@@ -98,7 +108,7 @@ def cmd_revisione():
 
 
 def menu():
-    print("\n=== SMISTA FOTO · Cesena FC ===")
+    print(f"\n=== SMISTA FOTO · Cesena FC · versione {VERSIONE} ===")
     print("1) Impara i volti (prima volta, o quando arriva qualcuno di nuovo)")
     print("2) Smista una cartella di foto")
     print("3) Riapri la revisione dell'ultima analisi")

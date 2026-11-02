@@ -72,7 +72,7 @@ class Riferimenti:
         os.makedirs(cartella_dati, exist_ok=True)
         self.file_json = os.path.join(cartella_dati, "riferimenti.json")
         self.file_npz = os.path.join(cartella_dati, "riferimenti.npz")
-        self.info = {}      # nome -> {tipo, cartella, imparate, confermate}
+        self.info = {}      # nome -> {tipo, cartella, imparate, confermate, fonti}
         self.impronte = {}  # nome -> matrice N x 128
         if os.path.exists(self.file_json):
             with open(self.file_json, encoding="utf-8") as f:
@@ -90,20 +90,38 @@ class Riferimenti:
         with open(self.file_json, "w", encoding="utf-8") as f:
             json.dump(self.info, f, ensure_ascii=False, indent=1)
 
-    def imposta(self, nome, tipo, cartella, impronte):
-        self.info[nome] = {"tipo": tipo, "cartella": cartella,
-                           "imparate": len(impronte), "confermate": 0}
+    def imposta(self, nome, tipo, cartella, impronte, fonti):
+        """fonti: per ogni impronta, il percorso della foto da cui viene."""
+        self.info[nome] = {"tipo": tipo, "cartella": cartella, "imparate": len(impronte),
+                           "confermate": 0, "fonti": list(fonti)}
         self.impronte[nome] = np.asarray(impronte, np.float32).reshape(-1, 128)
 
-    def aggiungi_conferma(self, nome, impronta, massimo=200):
+    def senza(self, testo):
+        """Copia dei riferimenti senza le impronte imparate da foto il cui percorso
+        contiene 'testo'. Serve alla prova: lo script non deve conoscere già
+        le foto su cui viene giudicato."""
+        copia = Riferimenti.__new__(Riferimenti)
+        copia.info, copia.impronte, tolte = self.info, {}, 0
+        for nome, m in self.impronte.items():
+            fonti = self.info[nome].get("fonti", [])
+            tieni = [i for i in range(len(m))
+                     if not (i < len(fonti) and testo.upper() in fonti[i].upper())]
+            tolte += len(m) - len(tieni)
+            copia.impronte[nome] = m[tieni]
+        return copia, tolte
+
+    def aggiungi_conferma(self, nome, impronta, fonte, massimo=200):
         """Ogni volto confermato in revisione migliora il riferimento."""
         if nome not in self.impronte:
             return
         m = np.vstack([self.impronte[nome], impronta[None, :]])
+        fonti = self.info[nome].setdefault("fonti", []) + [fonte]
         if len(m) > massimo:  # tiene le impronte imparate e le conferme più recenti
             base = self.info[nome]["imparate"]
             m = np.vstack([m[:base], m[-(massimo - base):]])
+            fonti = fonti[:base] + fonti[-(massimo - base):]
         self.impronte[nome] = m
+        self.info[nome]["fonti"] = fonti
         self.info[nome]["confermate"] = self.info[nome].get("confermate", 0) + 1
 
     def classifica(self, impronta):
@@ -122,12 +140,14 @@ class Riferimenti:
 def volto_ricorrente(volti_per_foto, soglia=0.40):
     """Dalle foto della cartella di una persona trova il volto che ricorre
     (il proprietario della cartella) e scarta compagni, avversari, tifosi.
-    volti_per_foto: lista di liste di impronte. Restituisce le impronte scelte."""
+    volti_per_foto: lista di liste di impronte.
+    Restituisce una lista di (indice della foto, impronta scelta)."""
     tutti = [(i, e) for i, lista in enumerate(volti_per_foto) for e in lista]
     if not tutti:
         return []
     if len({i for i, _ in tutti}) == 1:  # una sola foto: il volto più grande
-        return [volti_per_foto[0][0]]
+        i = tutti[0][0]
+        return [(i, volti_per_foto[i][0])]
     foto = np.array([i for i, _ in tutti])
     E = np.stack([e for _, e in tutti])
     S = E @ E.T
@@ -138,15 +158,15 @@ def volto_ricorrente(volti_per_foto, soglia=0.40):
     centro = E[int(np.argmax(sostegno))]
     for _ in range(2):  # due passaggi per stabilizzare il centro
         scelti = []
-        for lista in volti_per_foto:
+        for i, lista in enumerate(volti_per_foto):
             if not lista:
                 continue
             sims = [float(e @ centro) for e in lista]
             j = int(np.argmax(sims))
             if sims[j] > soglia:
-                scelti.append(lista[j])
+                scelti.append((i, lista[j]))
         if not scelti:
             return []
-        centro = np.mean(scelti, axis=0)
+        centro = np.mean([e for _, e in scelti], axis=0)
         centro /= np.linalg.norm(centro) + 1e-9
     return scelti

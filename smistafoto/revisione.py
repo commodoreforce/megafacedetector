@@ -7,6 +7,7 @@ import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from . import VERSIONE
 from .flussi import carica_lavoro, esegui_copia
 
 
@@ -16,6 +17,7 @@ def apri(conn, rif, lavoro_dir):
     stato = {}
 
     dati = {k: lavoro[k] for k in ("competizione", "evento", "persone", "foto", "volti", "copiato")}
+    dati["versione"] = VERSIONE
     pagina = PAGINA.replace("/*DATI*/null", json.dumps(dati, ensure_ascii=False)).encode("utf-8")
 
     class Gestore(BaseHTTPRequestHandler):
@@ -152,7 +154,7 @@ const persone=Object.keys(D.persone).sort((a,b)=>(D.persone[a]>D.persone[b])-(D.
 const fotoPer=Object.fromEntries(D.foto.map(f=>[f.id,f]));
 const escluse=new Set(), sceltaDubbio={}, sceltaNessuno={};
 $("#titolo").textContent=D.evento;
-$("#sottotitolo").textContent=D.competizione+" · "+D.foto.length+" foto analizzate";
+$("#sottotitolo").textContent=D.competizione+" · "+D.foto.length+" foto analizzate · Smista Foto versione "+D.versione;
 const ante=$("#anteprima");
 function hover(el,fid){el.onmouseenter=()=>{ante.src="/m/"+fotoPer[fid].anteprima;ante.style.display="block"};el.onmouseleave=()=>ante.style.display="none"}
 function selectPersone(valore,onChange){
