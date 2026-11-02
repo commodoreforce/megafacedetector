@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **1.7** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
+Versione **1.8** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
 
 Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro cartelle:
 
@@ -100,7 +100,12 @@ nuovo «Impara i volti nuovi»: impara solo i nuovi.
    - **Riconosciute**: raggruppate per persona. Clicca una miniatura per escluderla.
      Passando sopra con il mouse vedi la foto intera.
    - **Foto senza nessuno riconosciuto**: se vuoi le assegni a mano.
-4. Premi **«Copia nelle cartelle»**. La copia avviene dentro MEGA.
+4. Se vuoi essere sicuro, premi prima **«Simula (non copia nulla)»**: lo script fa tutti
+   i controlli della copia vera ma su MEGA legge soltanto, e mostra per ogni persona
+   la cartella di destinazione, quante foto verrebbero copiate, quante saltate perché
+   già presenti, quali cartelle verrebbero create e se qualcosa verrebbe bloccato dalle
+   regole di sicurezza. Il dettaglio foto per foto è anche in `lavori/<partita>/simulazione.csv`.
+5. Premi **«Copia nelle cartelle»**. La copia avviene dentro MEGA.
 
 Le analisi restano in **«Analisi recenti»**: si può riaprire la revisione in un secondo momento.
 
@@ -148,6 +153,7 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 
 ## Versioni
 
+- **1.8** (2 novembre 2026): «Simula» nella revisione: mostra cosa farebbe la copia, senza scrivere su MEGA.
 - **1.7** (2 novembre 2026): pulsante «Sfoglia» per scegliere la cartella della partita su MEGA senza scriverla.
 - **1.6** (2 novembre 2026): elenco delle persone nell'app, con «Escludi» per le cartelle che non sono persone e caricamento dei primi piani dal browser; corrette le righe di intestazione di MEGAcmd lette come nomi.
 - **1.5** (2 novembre 2026): corretto il collegamento a MEGAcmd sul Mac ("mega-exec: command not found").

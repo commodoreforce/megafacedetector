@@ -117,7 +117,33 @@ if cp[0] != ("cp", SRC, DEST):
     print("ERRORE: comando cp inatteso", cp[0])
     errori += 1
 
-# 6. controllo statico: nel codice nessuna chiamata a comandi diversi da quelli consentiti
+# 6. la simulazione su MEGA legge soltanto
+import json, tempfile  # noqa: E401,E402
+import numpy as np  # noqa: E402
+from smistafoto.flussi import simula_copia  # noqa: E402
+from smistafoto.registro import Registro  # noqa: E402
+
+cartella_lavoro = tempfile.mkdtemp()
+lavoro = {"sorgente": "/2026-27/MATCH/SERIEBKT/G10/Foto", "competizione": "SERIE BKT", "evento": "G10_X",
+          "cartelle_persone": {"CIOFI": "/2026-27/PLAYERS/CIOFI", "MATCH": "/2026-27/MATCH"},
+          "foto": [{"id": 0, "remoto": SRC, "relativo": "a.jpg", "nome_dest": "a.jpg"}], "volti": []}
+json.dump(lavoro, open(os.path.join(cartella_lavoro, "lavoro.json"), "w"))
+np.save(os.path.join(cartella_lavoro, "impronte.npy"), np.zeros((0, 128), np.float32))
+eseguiti.clear()
+import io, contextlib  # noqa: E401,E402
+with contextlib.redirect_stdout(io.StringIO()):
+    ris = simula_copia(m, cartella_lavoro, [{"foto": 0, "persona": "CIOFI"}, {"foto": 0, "persona": "MATCH"}], Registro())
+comandi = {c[0] for c in eseguiti}
+if comandi - {"ls"}:
+    print("ERRORE: la simulazione ha usato", comandi)
+    errori += 1
+elif ris["copierebbe"] != 1 or ris["bloccata"] != 1:
+    print("ERRORE: risultato della simulazione inatteso", ris["copierebbe"], ris["bloccata"])
+    errori += 1
+else:
+    print("ok  simulazione: solo letture (ls), 1 copia prevista, 1 bloccata fuori da PLAYERS")
+
+# 7. controllo statico: nel codice nessuna chiamata a comandi diversi da quelli consentiti
 cartella = os.path.join(os.path.dirname(QUI), "smistafoto")
 for nome in os.listdir(cartella):
     if nome.endswith(".py"):

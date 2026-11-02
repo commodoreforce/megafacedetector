@@ -223,8 +223,8 @@ class Mega:
         self._controlla_scrittura(cartella, 3)
         self._esegui("mkdir", "-p", _pulito(cartella))
 
-    def copia(self, origine, destinazione):
-        """Copia un file dentro MEGA. Rifiuta se la destinazione esiste già."""
+    def verifica_copia(self, origine, destinazione):
+        """Le stesse regole della copia, senza copiare: usata anche dalla simulazione."""
         origine, destinazione = _pulito(origine), _pulito(destinazione)
         # PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>/<file> -> almeno 4 livelli
         self._controlla_scrittura(destinazione, 4)
@@ -232,6 +232,11 @@ class Mega:
             raise OperazioneVietata("Le foto di origine non possono stare dentro PLAYERS.")
         if not e_foto(destinazione):
             raise OperazioneVietata(f"La destinazione non è una foto: {destinazione}")
+        return origine, destinazione
+
+    def copia(self, origine, destinazione):
+        """Copia un file dentro MEGA. Rifiuta se la destinazione esiste già."""
+        origine, destinazione = self.verifica_copia(origine, destinazione)
         if self.esiste(destinazione):
             raise OperazioneVietata(f"Esiste già, non sovrascrivo: {destinazione}")
         rc, _, err = self._esegui("cp", origine, destinazione)
@@ -296,10 +301,18 @@ class CartellaLocale:
             raise OperazioneVietata(f"Scrittura fuori dalle cartelle consentite: {cartella}")
         os.makedirs(self._vero(cartella), exist_ok=True)
 
-    def copia(self, origine, destinazione):
+    def verifica_copia(self, origine, destinazione):
         n = _livelli_sotto(destinazione, self.radice_scrittura)
         if n is None or n < 4:
             raise OperazioneVietata(f"Scrittura fuori dalle cartelle consentite: {destinazione}")
+        if _livelli_sotto(origine, self.radice_scrittura) is not None:
+            raise OperazioneVietata("Le foto di origine non possono stare dentro PLAYERS.")
+        if not e_foto(destinazione):
+            raise OperazioneVietata(f"La destinazione non è una foto: {destinazione}")
+        return origine, destinazione
+
+    def copia(self, origine, destinazione):
+        self.verifica_copia(origine, destinazione)
         with open(self._vero(origine), "rb") as src, open(self._vero(destinazione), "xb") as dst:
             shutil.copyfileobj(src, dst)  # "x": fallisce se il file esiste già
 

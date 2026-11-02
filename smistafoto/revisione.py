@@ -61,12 +61,24 @@ footer{position:fixed;left:0;right:0;bottom:0;background:#0a0a0c;color:#f4f4f0;p
 footer .riep{flex:1;min-width:200px}
 footer button{background:#f4f4f0;border:0;color:#0a0a0c;font-weight:700;padding:12px 20px;font-size:16px}
 footer button:disabled{opacity:.5;cursor:default}
+footer button.sec{background:transparent;color:#f4f4f0;border:1px solid #6b6b75}
+#simBox{background:var(--carta);border:2px solid var(--testo);border-radius:12px;padding:16px;margin:20px 0}
+#simBox h2{margin-top:0}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:10px 0}
+.tiles div{background:var(--fondo);border-radius:8px;padding:10px;font-size:13px;color:var(--tenue)}
+.tiles b{display:block;font-size:24px;color:var(--testo)}
+.tiles .rosso b{color:#d93025}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+td,th{padding:6px;border-bottom:1px solid var(--bordo);text-align:left;vertical-align:top}
+th{color:var(--tenue);font-weight:600;font-size:12px}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;word-break:break-all}
 .barra{height:8px;background:#444;border-radius:4px;overflow:hidden;margin-top:6px}
 .barra i{display:block;height:100%;background:#f4f4f0;width:0;transition:width .4s}
 @media (max-width:600px){main,header{padding-left:16px;padding-right:16px}}
 </style></head><body>
 <header><a href="/">← Smista Foto</a><h1 id="titolo"></h1><span class="sub" id="sottotitolo"></span></header>
 <main>
+<section id="simBox" hidden></section>
 <section id="secDubbi"><h2>Da verificare <small id="nDubbi"></small></h2>
 <p class="nota">Lo script non è sicuro. Clicca il nome se è giusto, oppure scegli la persona dall'elenco. Quelle lasciate su “non copiare” non vengono copiate.</p>
 <div class="dubbi" id="dubbi"></div></section>
@@ -79,6 +91,7 @@ footer button:disabled{opacity:.5;cursor:default}
 </main>
 <img class="anteprima" id="anteprima" alt="">
 <footer><div class="riep"><div id="riepilogo"></div><div class="barra" id="barra" hidden><i></i></div></div>
+<button id="simula" class="sec">Simula (non copia nulla)</button>
 <button id="copia">Copia nelle cartelle</button></footer>
 <script>
 const D=/*DATI*/null;
@@ -146,23 +159,43 @@ function decisioni(){
 function aggiorna(){const d=decisioni();const decisi=dubbi.filter(v=>sceltaDubbio[v.id]).length;
   $("#riepilogo").textContent=`${d.length} copie da fare · dubbi decisi: ${decisi}/${dubbi.length}`}
 aggiorna();
-const btn=$("#copia");
-if(D.prova){btn.disabled=true;$("#riepilogo").textContent="Questa è una prova: non si può copiare. Per copiare, avvia lo smistamento normale.";}
-else if(D.copiato){btn.disabled=true;$("#riepilogo").textContent="Questa partita è già stata copiata."}
+const btn=$("#copia"), bSim=$("#simula");
+async function attendi(onFine){
+  const t=setInterval(async()=>{const s=await(await fetch("/api/stato?dalla=999999")).json();const a=s.attivita,g=s.registro;
+    if(g.n)$("#barra i").style.width=(100*g.i/g.n)+"%";
+    if(a.in_corso){$("#riepilogo").textContent=`${g.fase}: ${g.i} di ${g.n||"?"}`+(g.dettaglio?" · "+g.dettaglio:"");return}
+    clearInterval(t);onFine(a)},1000)}
+function mostraSimulazione(x){
+  const b=$("#simBox");b.hidden=false;
+  b.innerHTML=`<h2>Simulazione della copia <small>su MEGA non è stato scritto nulla</small></h2>
+  <div class="tiles"><div><b>${x.copierebbe}</b>foto verrebbero copiate</div><div><b>${x.salterebbe}</b>già presenti: verrebbero saltate</div>
+  <div><b>${x.cartelle_nuove}</b>cartelle nuove da creare</div><div class="${x.bloccata?"rosso":""}"><b>${x.bloccata}</b>bloccate dalle regole di sicurezza</div></div>
+  <table><tr><th>Persona</th><th>Cartella su MEGA</th><th>Da copiare</th><th>Già presenti</th></tr>`+
+  x.persone.map(p=>`<tr><td><b>${esc(p.persona)}</b></td><td class="mono">${esc(p.cartella)}${p.nuova?' <i>(nuova)</i>':""}</td><td>${p.copierebbe}</td><td>${p.salterebbe}</td></tr>`).join("")+`</table>
+  <details style="margin-top:10px"><summary>Dettaglio foto per foto (${x.dettaglio.length})</summary><table><tr><th>Persona</th><th>Foto</th><th>Destinazione</th><th>Cosa succederebbe</th></tr>`+
+  x.dettaglio.map(r=>`<tr><td>${esc(r[0])}</td><td class="mono">${esc(r[1])}</td><td class="mono">${esc(r[2])}</td><td>${esc(r[3])}</td></tr>`).join("")+`</table></details>
+  <p class="nota" style="margin-top:10px">Lo stesso elenco è salvato nel file simulazione.csv dentro la cartella lavori/${esc(D.id)}. Se va bene, premi «Copia nelle cartelle» in basso. Se cambi qualche scelta, puoi rifare la simulazione.</p>`;
+  b.scrollIntoView({behavior:"smooth"})}
+bSim.onclick=async()=>{
+  const d=decisioni();if(!d.length)return alert("Non c'è niente da simulare.");
+  const r=await fetch(B+"/simula",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({decisioni:d})});
+  if(!r.ok){alert((await r.json()).errore);return}
+  bSim.disabled=btn.disabled=true;bSim.textContent="Simulazione…";$("#barra").hidden=false;
+  attendi(a=>{bSim.disabled=btn.disabled=false;bSim.textContent="Simula di nuovo";$("#barra").hidden=true;aggiorna();
+    if(a.errore)alert("Simulazione interrotta: "+a.errore);else mostraSimulazione(a.risultato)})};
+if(D.prova){bSim.disabled=true;btn.disabled=true;$("#riepilogo").textContent="Questa è una prova: non si può copiare. Per copiare, avvia lo smistamento normale.";}
+else if(D.copiato){bSim.disabled=true;btn.disabled=true;$("#riepilogo").textContent="Questa partita è già stata copiata."}
 btn.onclick=async()=>{
   const d=decisioni();if(!d.length)return alert("Non c'è niente da copiare.");
   const nondecisi=dubbi.length-dubbi.filter(v=>sceltaDubbio[v.id]).length;
   if(!confirm(`Copio ${d.length} foto nelle cartelle di ${D.evento}.`+(nondecisi?`\n${nondecisi} volti dubbi restano non copiati.`:"")+"\nLe foto già presenti vengono saltate, niente viene sovrascritto.\nProcedo?"))return;
   const r=await fetch(B+"/conferma",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({decisioni:d})});
   if(!r.ok){alert((await r.json()).errore);return}
-  btn.disabled=true;btn.textContent="Copia in corso…";$("#barra").hidden=false;
-  const t=setInterval(async()=>{const s=await(await fetch("/api/stato?dalla=999999")).json();const a=s.attivita,g=s.registro;
-    if(g.n)$("#barra i").style.width=(100*g.i/g.n)+"%";
-    $("#riepilogo").textContent=a.in_corso?`Copia: ${g.i} di ${g.n||"?"}`+(g.dettaglio?" · "+g.dettaglio:""):"";
-    if(!a.in_corso){clearInterval(t);
+  btn.disabled=bSim.disabled=true;btn.textContent="Copia in corso…";$("#barra").hidden=false;
+  attendi(a=>{
       if(a.errore){$("#riepilogo").textContent="Interrotto: "+a.errore;btn.textContent="Errore";return}
       const x=a.risultato||{};$("#barra i").style.width="100%";
       $("#riepilogo").textContent=`Finito: ${x.copiate} copiate · ${x.gia_presenti} già presenti (saltate) · ${(x.errori||[]).length} errori`;
       if((x.errori||[]).length)alert("Alcune copie non sono riuscite:\n"+x.errori.slice(0,10).join("\n"));
-      btn.textContent="Torna a Smista Foto";btn.disabled=false;btn.onclick=()=>location.href="/"}},1000)};
+      btn.textContent="Torna a Smista Foto";btn.disabled=false;btn.onclick=()=>location.href="/"})};
 </script></body></html>"""

@@ -311,13 +311,8 @@ def elenca_lavori(cartella_lavori):
 
 # ---------------------------------------------------------------- copia
 
-def esegui_copia(conn, rif, lavoro_dir, decisioni, reg):
-    """decisioni: lista di {foto, persona, volto (facoltativo)}."""
-    lavoro, impronte = carica_lavoro(lavoro_dir)
-    if lavoro.get("copiato"):
-        raise RuntimeError("Questa analisi è già stata copiata.")
-    if lavoro.get("prova_su"):
-        raise RuntimeError("Questa era una prova: non si copia. Avvia lo smistamento normale.")
+def _piano(lavoro, decisioni):
+    """{cartella di destinazione: [(foto, persona), ...]} dalle decisioni della revisione."""
     foto = {f["id"]: f for f in lavoro["foto"]}
     piano, visti = {}, set()
     for d in decisioni:
@@ -328,6 +323,65 @@ def esegui_copia(conn, rif, lavoro_dir, decisioni, reg):
         cartella = posixpath.join(lavoro["cartelle_persone"][d["persona"]],
                                   lavoro["competizione"], lavoro["evento"])
         piano.setdefault(cartella, []).append((foto[chiave[0]], d["persona"]))
+    return piano
+
+
+def simula_copia(conn, lavoro_dir, decisioni, reg):
+    """SIMULAZIONE: fa tutti i controlli della copia vera ma su MEGA legge soltanto.
+    Dice, foto per foto, cosa succederebbe."""
+    lavoro, _ = carica_lavoro(lavoro_dir)
+    piano = _piano(lavoro, decisioni)
+    totale = sum(len(v) for v in piano.values())
+    reg.info(f"SIMULAZIONE (non scrive niente su MEGA): controllo {totale} copie in {len(piano)} cartelle…")
+    reg.inizia_fase("Simulazione della copia", totale)
+    persone, righe, fatte = [], [], 0
+    for cartella, elementi in sorted(piano.items()):
+        persona = elementi[0][1]
+        nuova = not conn.esiste(cartella)
+        presenti = set() if nuova else set(conn.elenca_nomi(cartella))
+        conta = {"copierebbe": 0, "salterebbe": 0, "bloccata": 0}
+        for f, p in elementi:
+            originale = posixpath.basename(f["relativo"])
+            dest = posixpath.join(cartella, f["nome_dest"])
+            try:
+                conn.verifica_copia(f["remoto"], dest)
+                if f["nome_dest"] in presenti or originale in presenti:
+                    esito, chiave = "già presente: verrebbe saltata", "salterebbe"
+                else:
+                    esito, chiave = "verrebbe copiata", "copierebbe"
+            except Exception as e:
+                esito, chiave = f"bloccata dalle regole di sicurezza: {e}", "bloccata"
+            conta[chiave] += 1
+            righe.append([p, f["relativo"], dest, esito])
+            fatte += 1
+            reg.passo(fatte, f"{p}: {f['nome_dest']}")
+        persone.append({"persona": persona, "cartella": cartella, "nuova": nuova, **conta})
+        reg.info(f"{persona}: {conta['copierebbe']} da copiare, {conta['salterebbe']} già presenti"
+                 + (", cartella nuova" if nuova else "") + (f", {conta['bloccata']} BLOCCATE" if conta["bloccata"] else "") + ".")
+    with open(os.path.join(lavoro_dir, "simulazione.csv"), "w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.writer(fh, delimiter=";")
+        w.writerow(["persona", "foto", "destinazione", "cosa succederebbe"])
+        w.writerows(righe)
+    ris = {"persone": persone,
+           "copierebbe": sum(p["copierebbe"] for p in persone),
+           "salterebbe": sum(p["salterebbe"] for p in persone),
+           "bloccata": sum(p["bloccata"] for p in persone),
+           "cartelle_nuove": sum(p["nuova"] for p in persone),
+           "dettaglio": righe[:3000]}
+    (reg.ok if not ris["bloccata"] else reg.avviso)(
+        f"Simulazione finita: {ris['copierebbe']} foto verrebbero copiate, {ris['salterebbe']} saltate perché "
+        f"già presenti, {ris['cartelle_nuove']} cartelle nuove, {ris['bloccata']} bloccate. Su MEGA non è cambiato nulla.")
+    return ris
+
+
+def esegui_copia(conn, rif, lavoro_dir, decisioni, reg):
+    """decisioni: lista di {foto, persona, volto (facoltativo)}."""
+    lavoro, impronte = carica_lavoro(lavoro_dir)
+    if lavoro.get("copiato"):
+        raise RuntimeError("Questa analisi è già stata copiata.")
+    if lavoro.get("prova_su"):
+        raise RuntimeError("Questa era una prova: non si copia. Avvia lo smistamento normale.")
+    piano = _piano(lavoro, decisioni)
     totale = sum(len(v) for v in piano.values())
     reg.info(f"Copio {totale} foto nelle cartelle di {len(piano)} persone, "
              f"sottocartella {lavoro['competizione']}/{lavoro['evento']}.")
