@@ -102,7 +102,10 @@ th{color:var(--tenue);font-weight:600;font-size:12px}
 <button id="simula" class="sec">Simula (non copia nulla)</button>
 <button id="copia">Copia nelle cartelle</button></footer>
 <script>
+window.onerror=(m,f,l)=>{const d=document.createElement("div");d.style.cssText="background:#e0352b;color:#fff;padding:12px 24px;font-weight:600";
+  d.textContent="Errore nella pagina: "+m+" (riga "+l+"). Fai uno screenshot e mandalo a chi segue Smista Foto.";document.body.prepend(d)};
 const D=/*DATI*/null;
+const E=D.esiti;
 const B="/l/"+encodeURIComponent(D.id);
 const $=s=>document.querySelector(s);
 const esc=t=>String(t).replace(/[&<>"']/g,c=>"&#"+c.charCodeAt(0)+";");
@@ -131,7 +134,6 @@ for(const v of dubbi){
     b.title="somiglianza "+Math.round(s*100)+"%";
     b.onclick=()=>{sel.value=n;sel.onchange()};info.append(b)}
   info.append(sel);$("#dubbi").append(c)}
-const E=D.esiti;
 if(E){const s=D.volti.filter(v=>v.stato=="sicuro"),no=s.filter(v=>E[v.id]=="no").length;
   $("#provaBanner").hidden=false;
   $("#provaBanner").innerHTML=`<b>Prova</b> · confronto con lo smistamento fatto a mano:<span class="leg" style="background:#1e9e4a"></span>c'è anche a mano<span class="leg" style="background:#e0352b"></span>non c'è a mano (${no} su ${s.length} sicure).
