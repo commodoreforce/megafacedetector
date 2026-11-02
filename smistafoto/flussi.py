@@ -269,25 +269,23 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
                     presenti[n1] = vid
             lista_volti.append(voce)
             impronte.append(v["impronta"])
-        # nome scritto nel file dal fotografo: vale come assegnazione sicura
+        # nome scritto nel file dal fotografo: SOLO un suggerimento (a volte è sbagliato).
+        # Non rende mai sicura un'assegnazione e non cambia quelle del riconoscimento.
         for persona in nomi_nel_file(posixpath.basename(r), rif.info):
-            gia = [lista_volti[j] for j in range(len(lista_volti)) if lista_volti[j]["foto"] == fid
-                   and lista_volti[j]["persona"] == persona]
-            for v in gia:  # il volto riconosciuto ha la conferma del nome del file
-                v["stato"], v["dal_nome"] = "sicuro", True
-            if not gia:
-                vid = len(lista_volti)
-                lista_volti.append({"id": vid, "foto": fid, "mini": anteprima, "stato": "sicuro",
-                                    "persona": persona, "punteggio": 1.0, "dal_nome": True,
-                                    "solo_nome": True, "alternative": []})
-                impronte.append(np.zeros(128, np.float32))
             nomi_trovati += 1
+            if any(v["foto"] == fid and v["persona"] == persona for v in lista_volti):
+                continue  # il volto è già stato riconosciuto come quella persona
+            vid = len(lista_volti)
+            lista_volti.append({"id": vid, "foto": fid, "mini": anteprima, "stato": "dubbio",
+                                "persona": persona, "punteggio": 0.0, "dal_nome": True,
+                                "solo_nome": True, "alternative": []})
+            impronte.append(np.zeros(128, np.float32))
         if i % 25 == 0:
             reg.info(f"Analizzate {i} foto su {len(remote)}…")
     shutil.rmtree(tmp_dir, ignore_errors=True)
     if nomi_trovati:
-        reg.info(f"In {nomi_trovati} casi il nome della persona era scritto nel nome del file: "
-                 "li ho assegnati con sicurezza.")
+        reg.info(f"In {nomi_trovati} casi il nome del file contiene un cognome: dove il volto non "
+                 "l'ha confermato, la foto è tra quelle da verificare con il nome come suggerimento.")
     if illeggibili:
         reg.avviso(f"{illeggibili} foto non si sono potute aprire (formato non supportato o download fallito).")
 

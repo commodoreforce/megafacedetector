@@ -1,2 +1,2 @@
-VERSIONE = "1.10"
+VERSIONE = "1.11"
 DATA_VERSIONE = "2 novembre 2026"
