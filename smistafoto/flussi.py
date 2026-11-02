@@ -265,18 +265,26 @@ def esegui_copia(conn, rif, lavoro_dir, decisioni, stato):
                  copiate=0, gia_presenti=0, errori=[])
     registro = []
     for cartella, elementi in piano.items():
-        presenti = set(conn.elenca_nomi(cartella))
-        if not presenti:
-            conn.crea_cartella(cartella)
+        try:
+            presenti = set(conn.elenca_nomi(cartella))
+            if not presenti:
+                conn.crea_cartella(cartella)
+        except Exception as e:  # cartella non consentita o MEGA irraggiungibile: salta tutto il gruppo
+            for f, persona in elementi:
+                stato["errori"].append(f"{f['nome_dest']} → {persona}: {e}")
+                registro.append([persona, f["relativo"], cartella, f"errore: {e}"])
+                stato["fatte"] += 1
+            continue
         for f, persona in elementi:
             esito = "copiata"
             originale = posixpath.basename(f["relativo"])
-            if f["nome_dest"] in presenti or originale in presenti:
+            dest = posixpath.join(cartella, f["nome_dest"])
+            if f["nome_dest"] in presenti or originale in presenti or conn.esiste(dest):
                 esito = "già presente"
                 stato["gia_presenti"] += 1
             else:
                 try:
-                    conn.copia(f["remoto"], posixpath.join(cartella, f["nome_dest"]))
+                    conn.copia(f["remoto"], dest)  # rifiuta comunque se dest esiste
                     stato["copiate"] += 1
                 except Exception as e:
                     esito = f"errore: {e}"
