@@ -1,3 +1,5 @@
 opencv-python>=4.8,<6
 numpy
 Pillow
+certifi
+onnxruntime; python_version < "3.15"
