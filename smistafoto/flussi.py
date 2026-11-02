@@ -155,6 +155,27 @@ def ricava_evento(cfg, sorgente):
     return comp, evento
 
 
+def _parole(testo):
+    """'775A5502.Fantozzi_S.jpg' -> ['775a5502', 'fantozzi', 's', 'jpg']; senza accenti."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", testo).encode("ascii", "ignore").decode().lower()
+    return [p for p in re.split(r"[^a-z0-9]+", t) if p]
+
+
+def nomi_nel_file(nome_file, persone):
+    """Persone il cui nome compare come parola intera nel nome del file
+    (i fotografi a volte scrivono il cognome nel file)."""
+    parole = _parole(os.path.splitext(nome_file)[0])
+    trovati = []
+    for persona in persone:
+        p = _parole(persona)
+        unito = "".join(p)  # D'URBANO -> durbano, DALLA VECCHIA -> dallavecchia
+        if p and len(unito) >= 4 and (unito in parole or
+                                      any(parole[i:i + len(p)] == p for i in range(len(parole)))):
+            trovati.append(persona)
+    return trovati
+
+
 def _nome_destinazione(cfg, relativo):
     parti = relativo.split("/")
     if cfg["prefisso_fotografo"] and len(parti) > 1:
@@ -205,7 +226,7 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
     soglia_s, soglia_d, margine = cfg["soglia_sicura"], cfg["soglia_dubbia"], cfg["margine"]
     foto, lista_volti, impronte = [], [], []
     reg.inizia_fase("Riconosco i volti", len(remote))
-    illeggibili = 0
+    illeggibili = nomi_trovati = 0
     for i, r in enumerate(remote, 1):
         rel = posixpath.relpath(r, sorgente)
         reg.passo(i, rel)
@@ -248,9 +269,25 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
                     presenti[n1] = vid
             lista_volti.append(voce)
             impronte.append(v["impronta"])
+        # nome scritto nel file dal fotografo: vale come assegnazione sicura
+        for persona in nomi_nel_file(posixpath.basename(r), rif.info):
+            gia = [lista_volti[j] for j in range(len(lista_volti)) if lista_volti[j]["foto"] == fid
+                   and lista_volti[j]["persona"] == persona]
+            for v in gia:  # il volto riconosciuto ha la conferma del nome del file
+                v["stato"], v["dal_nome"] = "sicuro", True
+            if not gia:
+                vid = len(lista_volti)
+                lista_volti.append({"id": vid, "foto": fid, "mini": anteprima, "stato": "sicuro",
+                                    "persona": persona, "punteggio": 1.0, "dal_nome": True,
+                                    "solo_nome": True, "alternative": []})
+                impronte.append(np.zeros(128, np.float32))
+            nomi_trovati += 1
         if i % 25 == 0:
             reg.info(f"Analizzate {i} foto su {len(remote)}…")
     shutil.rmtree(tmp_dir, ignore_errors=True)
+    if nomi_trovati:
+        reg.info(f"In {nomi_trovati} casi il nome della persona era scritto nel nome del file: "
+                 "li ho assegnati con sicurezza.")
     if illeggibili:
         reg.avviso(f"{illeggibili} foto non si sono potute aprire (formato non supportato o download fallito).")
 
@@ -429,7 +466,7 @@ def esegui_copia(conn, rif, lavoro_dir, decisioni, reg):
         w.writerows(registro)
 
     for d in decisioni:  # i volti confermati migliorano i riferimenti
-        if d.get("volto") is not None:
+        if d.get("volto") is not None and np.any(impronte[int(d["volto"])]):
             rif.aggiungi_conferma(d["persona"], impronte[int(d["volto"])],
                                   "conferma:" + lavoro["sorgente"])
     rif.salva()

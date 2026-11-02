@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **1.9.1** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
+Versione **1.10** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
 
 Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro cartelle:
 
@@ -113,6 +113,10 @@ Le analisi restano in **«Analisi recenti»**: si può riaprire la revisione in 
 `Rossi_DSC_0412.jpg`, così due fotografi con lo stesso nome file non si sovrascrivono.
 Le foto già presenti nella cartella del giocatore vengono saltate.
 
+**Nomi nel file:** se il fotografo scrive il cognome nel nome del file
+(es. `775A5531.Mangraviti.jpg`), la foto va direttamente a quella persona, anche se il
+volto non si vede bene. Nella revisione queste foto hanno l'etichetta «nome file».
+
 Ogni volto confermato in revisione migliora il riconoscimento per la volta dopo.
 
 ### Prova pilota
@@ -153,6 +157,7 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 
 ## Versioni
 
+- **1.10** (2 novembre 2026): se il fotografo ha scritto il cognome nel nome del file, la foto va a quella persona; corretto il filtro «solo le rosse».
 - **1.9.1** (2 novembre 2026): corretta la pagina di revisione che restava vuota quando c'erano volti da verificare.
 - **1.9** (2 novembre 2026): la revisione di una prova segna in verde i volti che coincidono con lo smistamento a mano e in rosso gli altri, con la larghezza di ogni volto.
 - **1.8** (2 novembre 2026): «Simula» nella revisione: mostra cosa farebbe la copia, senza scrivere su MEGA.

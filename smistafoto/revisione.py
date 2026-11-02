@@ -140,7 +140,7 @@ if(E){const s=D.volti.filter(v=>v.stato=="sicuro"),no=s.filter(v=>E[v.id]=="no")
   Il numero in basso a sinistra di ogni volto è la sua larghezza in pixel: le facce piccole sono di solito persone sullo sfondo.
   <div style="margin-top:10px"><button id="soloNo">Mostra solo le rosse</button></div>`;
   let solo=false;$("#soloNo").onclick=()=>{solo=!solo;$("#soloNo").textContent=solo?"Mostra tutte":"Mostra solo le rosse";
-    document.querySelectorAll(".mini.ok").forEach(m=>m.classList.toggle("nascosto",solo));
+    document.querySelectorAll(".mini.ok,.carta.okv").forEach(m=>m.classList.toggle("nascosto",solo));
     document.querySelectorAll(".persona").forEach(p=>p.classList.toggle("nascosto",solo&&!p.querySelector(".mini.no")))}}
 const sicure=D.volti.filter(v=>v.stato=="sicuro");
 const perPersona={};for(const v of sicure)(perPersona[v.persona]??=[]).push(v);
@@ -156,7 +156,7 @@ for(const p of persone.filter(p=>perPersona[p])){
     e.target.textContent=tutte?"Escludi tutte":"Includi tutte";contaAgg();aggiorna()};
   for(const v of perPersona[p]){
     const m=document.createElement("div");m.className="mini"+(E?" "+E[v.id]:"");
-    m.innerHTML=`<img src="${B}/m/${v.mini}" alt="" loading="lazy">`+(v.larghezza?`<span class="px">${v.larghezza}px</span>`:"");
+    m.innerHTML=`<img src="${B}/m/${v.mini}" alt="" loading="lazy">`+(v.dal_nome?`<span class="px">nome file</span>`:v.larghezza?`<span class="px">${v.larghezza}px</span>`:"");
     if(E)m.title=E[v.id]=="ok"?"c'è anche nello smistamento a mano":"non c'è nello smistamento a mano";
     hover(m,v.foto);
     m.onclick=()=>{escluse.has(v.id)?escluse.delete(v.id):escluse.add(v.id);m.classList.toggle("off");contaAgg();aggiorna()};
@@ -173,7 +173,7 @@ $("#secNessuno").ontoggle=()=>{if(!$("#nessuno").children.length)for(const f of 
   $("#nessuno").append(c)}};
 function decisioni(){
   const out=[];
-  for(const v of sicure)if(!escluse.has(v.id))out.push({foto:v.foto,persona:v.persona,volto:v.id});
+  for(const v of sicure)if(!escluse.has(v.id))out.push({foto:v.foto,persona:v.persona,volto:v.solo_nome?null:v.id});
   for(const v of dubbi)if(sceltaDubbio[v.id])out.push({foto:v.foto,persona:sceltaDubbio[v.id],volto:sceltaDubbio[v.id]==v.persona||v.alternative.some(a=>a[0]==sceltaDubbio[v.id])?v.id:null});
   for(const [f,p] of Object.entries(sceltaNessuno))if(p)out.push({foto:+f,persona:p});
   const visti=new Set();return out.filter(d=>{const k=d.foto+"|"+d.persona;if(visti.has(k))return false;visti.add(k);return true})}
