@@ -37,6 +37,12 @@ class App:
         self._lucchetto = threading.Lock()
         self._cache_lavori = (0, [], None)
         self._ultimo_controllo = 0
+        self.file_esclusi = os.path.join(self.dati, "esclusi.json")
+        self.esclusi = []
+        if os.path.exists(self.file_esclusi):
+            with open(self.file_esclusi, encoding="utf-8") as f:
+                self.esclusi = json.load(f)
+        self.primi_piani = os.path.join(qui, "primi_piani")
 
     # ------------------------------------------------------------ attività
 
@@ -99,10 +105,48 @@ class App:
                 self.reg.info("Non conosco ancora nessun volto: premi «Impara i volti».")
         self.avvia("collegamento", lavoro)
 
-    def impara(self, tutti):
+    def impara(self, tutti, solo=None):
         self._serve_collegamento()
-        self.avvia("impara", lambda: impara(self.cfg, self.conn, self.volti, self.rif,
-                                            self.dati, self.reg, tutti=tutti))
+        self.avvia("impara", lambda: impara(self.cfg, self.conn, self.volti, self.rif, self.dati,
+                                            self.reg, tutti=tutti, solo=solo, esclusi=self.esclusi))
+
+    def escludi(self, nome, escluso):
+        if self.attivita["in_corso"]:
+            raise RuntimeError("C'è un'attività in corso: aspetta che finisca.")
+        if escluso and nome not in self.esclusi:
+            self.esclusi.append(nome)
+            self.rif.rimuovi(nome)
+            self.rif.salva()
+            self.reg.info(f"{nome} escluso: non verrà più considerato una persona.")
+        elif not escluso and nome in self.esclusi:
+            self.esclusi.remove(nome)
+            self.reg.info(f"{nome} di nuovo incluso: premi «Impara i volti nuovi» per impararlo.")
+        with open(self.file_esclusi, "w", encoding="utf-8") as f:
+            json.dump(sorted(self.esclusi), f, ensure_ascii=False)
+
+    def salva_primo_piano(self, persona, nome_file, dati):
+        if persona not in self.rif.info:
+            raise RuntimeError("Persona sconosciuta.")
+        nome_file = os.path.basename(nome_file.replace("\\", "/"))
+        if os.path.splitext(nome_file)[1].lower() not in (".jpg", ".jpeg", ".png", ".webp"):
+            raise RuntimeError(f"{nome_file}: servono foto JPG, PNG o WEBP.")
+        if not dati or len(dati) > 40 * 1024 * 1024:
+            raise RuntimeError(f"{nome_file}: file vuoto o troppo grande.")
+        cartella = os.path.join(self.primi_piani, persona)
+        os.makedirs(cartella, exist_ok=True)
+        with open(os.path.join(cartella, nome_file), "wb") as f:
+            f.write(dati)
+        self.reg.info(f"{persona}: aggiunto il primo piano {nome_file} (salvato solo su questo computer).")
+
+    def _lista_persone(self):
+        righe = []
+        for nome, info in self.rif.info.items():
+            pp = os.path.join(self.primi_piani, nome)
+            n_pp = len([f for f in os.listdir(pp) if not f.startswith(".")]) if os.path.isdir(pp) else 0
+            righe.append({"nome": nome, "tipo": info.get("tipo"), "foto": int(len(self.rif.impronte.get(nome, []))),
+                          "primi_piani": n_pp})
+        righe.sort(key=lambda r: (r["foto"] >= 4, r["tipo"] != "giocatore", r["nome"]))
+        return righe
 
     def controlla(self, percorso, prova):
         self._serve_collegamento()
@@ -172,6 +216,7 @@ class App:
         return {"versione": VERSIONE, "data_versione": DATA_VERSIONE,
                 "account": self.account, "problema": self.problema, "semaforo": semaforo,
                 "persone": {"giocatori": g, "staff": len(self.rif.info) - g, "deboli": deboli(self.rif)},
+                "elenco": self._lista_persone(), "esclusi": sorted(self.esclusi),
                 "attivita": a, "registro": self.reg.stato(dalla),
                 "lavori": self._lavori()}
 
@@ -254,12 +299,20 @@ def _gestore(app):
         def do_POST(self):
             parti = [p for p in urlparse(self.path).path.split("/") if p]
             try:
+                if parti == ["api", "primopiano"]:
+                    q = parse_qs(urlparse(self.path).query)
+                    n = int(self.headers.get("Content-Length", 0) or 0)
+                    app.salva_primo_piano(q["persona"][0], q["nome"][0], self.rfile.read(n))
+                    return self._invia({"ok": True})
                 c = self._corpo()
                 if parti == ["api", "collega"]:
                     app.collega()
                     r = {"ok": True}
                 elif parti == ["api", "impara"]:
-                    app.impara(bool(c.get("tutti")))
+                    app.impara(bool(c.get("tutti")), c.get("solo"))
+                    r = {"ok": True}
+                elif parti == ["api", "escludi"]:
+                    app.escludi(c["nome"], bool(c["escluso"]))
                     r = {"ok": True}
                 elif parti == ["api", "controlla"]:
                     r = app.controlla(c.get("percorso", ""), bool(c.get("prova")))
@@ -339,6 +392,10 @@ main{max-width:1180px;margin:0 auto;padding:20px 24px 80px;display:grid;grid-tem
 .registro .ora{color:var(--tenue);font-variant-numeric:tabular-nums;flex:none}
 .registro .ok{color:var(--ok)}.registro .avviso{color:var(--avv)}.registro .errore{color:var(--err);font-weight:600}
 .esito{margin-top:12px}
+#elenco table td{vertical-align:middle}
+#elenco .az{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+#elenco button{padding:5px 10px;font-size:13px;font-weight:500}
+.debole{color:var(--avv);font-weight:600}
 .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
 .tiles div{background:var(--fondo);border-radius:8px;padding:10px;font-size:12.5px;color:var(--tenue)}
 .tiles b{display:block;font-size:22px;color:var(--testo)}
@@ -359,6 +416,9 @@ footer{max-width:1180px;margin:0 auto;padding:0 24px 30px;color:var(--tenue);fon
   <div class="grandi"><div><b id="nG">0</b>giocatori</div><div><b id="nS">0</b>staff</div></div>
   <div id="deboli"></div>
   <div class="riga"><button class="primo" id="bImpara">Impara i volti nuovi</button><button id="bReimpara">Reimpara tutti da zero</button></div>
+  <details id="elencoBox" style="margin-top:14px"><summary style="cursor:pointer;font-weight:600" id="elencoTit">Elenco delle persone</summary>
+   <p class="nota" style="margin:8px 0">In alto chi ha poche foto. <b>Primi piani</b>: scegli 3-5 foto in cui si vede bene il volto, poi premi «Reimpara». <b>Escludi</b>: per le cartelle che non sono persone (es. 00VARIE).</p>
+   <div id="elenco"></div></details>
   <div id="problema"></div>
  </section>
  <section class="carta">
@@ -406,7 +466,7 @@ async function aggiorna(){
   $("#problema").innerHTML=s.problema&&!s.account?`<div class="problema">${esc(s.problema)}<br><button id="bRiprova">Riprova</button></div>`:"";
   if($("#bRiprova"))$("#bRiprova").onclick=()=>api("/api/collega").catch(avvisa);
   $("#nG").textContent=s.persone.giocatori;$("#nS").textContent=s.persone.staff;
-  $("#deboli").innerHTML=s.persone.deboli.length?`<div class="avviso">Riconoscimento debole per: <b>${s.persone.deboli.map(esc).join(", ")}</b>. Metti 3-5 primi piani di ciascuno nella cartella <b>primi_piani/COGNOME</b> dello script e premi «Impara i volti nuovi».</div>`:"";
+  $("#deboli").innerHTML=s.persone.deboli.length?`<div class="avviso">Riconoscimento debole per: <b>${s.persone.deboli.map(esc).join(", ")}</b>. Apri «Elenco delle persone» qui sotto e premi «Primi piani…» accanto al nome.</div>`:"";
   const a=s.attivita, occ=a.in_corso||!s.account;
   for(const b of ["#bImpara","#bReimpara","#bControlla","#bSmista","#bProva"])$(b).disabled=occ;
   const r=s.registro;
@@ -419,6 +479,28 @@ async function aggiorna(){
   const chiave=JSON.stringify([a.tipo,a.in_corso,a.lavoro,!!a.risultato,a.errore]);
   if(chiave!==ultimoEsito){ultimoEsito=chiave;mostraEsito(a)}
   mostraLavori(s.lavori);
+  mostraElenco(s);
+}
+let chiaveElenco="";
+function mostraElenco(s){
+  const k=JSON.stringify([s.elenco,s.esclusi,s.attivita.in_corso]);if(k===chiaveElenco)return;chiaveElenco=k;
+  $("#elencoTit").textContent=`Elenco delle persone (${s.elenco.length})`+(s.esclusi.length?` · ${s.esclusi.length} escluse`:"");
+  const occ=s.attivita.in_corso||!s.account;
+  let h=`<table><tr><th>Nome</th><th>Foto utili</th><th></th></tr>`+s.elenco.map(p=>`<tr><td><b>${esc(p.nome)}</b><br><span class="nota">${p.tipo}</span></td>
+    <td class="${p.foto<4?"debole":""}">${p.foto}${p.foto<4?" · debole":""}${p.primi_piani?`<br><span class="nota">${p.primi_piani} primi piani</span>`:""}</td>
+    <td><div class="az"><input type="file" accept="image/*" multiple hidden data-pp="${esc(p.nome)}"><button type="button" ${occ?"disabled":""} onclick="this.previousElementSibling.click()">Primi piani…</button>
+    ${p.primi_piani?`<button ${occ?"disabled":""} data-re="${esc(p.nome)}">Reimpara</button>`:""}
+    <button ${occ?"disabled":""} data-ex="${esc(p.nome)}">Escludi</button></div></td></tr>`).join("")+"</table>";
+  if(s.esclusi.length)h+=`<p class="nota" style="margin-top:12px">Escluse: `+s.esclusi.map(n=>`${esc(n)} <button ${occ?"disabled":""} data-in="${esc(n)}">Includi</button>`).join(" ")+"</p>";
+  $("#elenco").innerHTML=h;
+  $("#elenco").querySelectorAll("[data-ex]").forEach(b=>b.onclick=()=>{if(confirm(`Escludo ${b.dataset.ex}? Lo script non lo considererà più una persona (le cartelle su MEGA non vengono toccate).`))api("/api/escludi",{nome:b.dataset.ex,escluso:true}).catch(avvisa)});
+  $("#elenco").querySelectorAll("[data-in]").forEach(b=>b.onclick=()=>api("/api/escludi",{nome:b.dataset.in,escluso:false}).catch(avvisa));
+  $("#elenco").querySelectorAll("[data-re]").forEach(b=>b.onclick=()=>api("/api/impara",{solo:[b.dataset.re]}).catch(avvisa));
+  $("#elenco").querySelectorAll("[data-pp]").forEach(inp=>inp.onchange=async()=>{
+    const nome=inp.dataset.pp;let ok=0;
+    for(const f of inp.files){const r=await fetch(`/api/primopiano?persona=${encodeURIComponent(nome)}&nome=${encodeURIComponent(f.name)}`,{method:"POST",body:f});
+      if(r.ok)ok++;else alert((await r.json()).errore)}
+    if(ok&&confirm(`${ok} primi piani aggiunti per ${nome}. Lo reimparo adesso?`))api("/api/impara",{solo:[nome]}).catch(avvisa)});
 }
 function tilesProva(p){return `<div class="tiles"><div><b>${p.precisione}%</b>precisione (giuste sulle proposte)</div><div><b>${p.copertura}%</b>del lavoro a mano trovato da solo</div><div><b>${p.sbagliate}</b>assegnazioni sbagliate</div><div><b>${p.giuste}</b>giuste su ${p.a_mano} fatte a mano</div><div><b>${p.tra_i_dubbi}</b>altre trovate tra i dubbi</div><div><b>${p.mancate}</b>mancate del tutto</div></div>`}
 function mostraEsito(a){

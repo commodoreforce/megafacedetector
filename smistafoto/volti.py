@@ -78,8 +78,15 @@ class Riferimenti:
             with open(self.file_json, encoding="utf-8") as f:
                 self.info = json.load(f)
             dati = np.load(self.file_npz)
-            for nome, i in self.info.items():
+            for nome, i in list(self.info.items()):
+                if "/" in nome or nome.endswith(":"):  # righe di intestazione lette per errore (v1.5)
+                    del self.info[nome]
+                    continue
                 self.impronte[nome] = dati[i["chiave"]]
+
+    def rimuovi(self, nome):
+        self.info.pop(nome, None)
+        self.impronte.pop(nome, None)
 
     def salva(self):
         matrici = {}

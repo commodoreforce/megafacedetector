@@ -145,7 +145,9 @@ class Mega:
         rc, out, _ = self._esegui("ls", _pulito(cartella))
         if rc != 0:
             return []
-        return [r.strip() for r in out.splitlines() if r.strip()]
+        # MEGAcmd può stampare un'intestazione con il percorso ("/2026-27/PLAYERS:"): non è un nome
+        return [r.strip() for r in out.splitlines()
+                if r.strip() and not (r.strip().endswith(":") and "/" in r)]
 
     def esiste(self, percorso):
         """True se il percorso esiste su MEGA. In caso di dubbio risponde True,
