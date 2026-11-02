@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **1.2** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
+Versione **1.3** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
 
 Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro cartelle:
 
@@ -56,61 +56,65 @@ anche dopo aver riavviato il computer.
 - **Mac:** doppio clic su `Installa_Mac.command`.
   La prima volta il Mac può bloccarlo: clic destro sul file → **Apri** → **Apri**.
 
-## 2. Primo avvio: imparare i volti
+## 2. Come si usa
 
-Doppio clic su `Avvia_Windows.bat` (o `Avvia_Mac.command`) e scegli **1) Impara i volti**.
+Doppio clic su `Avvia_Mac.command` (o `Avvia_Windows.bat`). Si apre una finestra del
+Terminale **da lasciare aperta** e, dopo un attimo, l'app nel browser
+(indirizzo `http://127.0.0.1:8765`, raggiungibile solo da questo computer).
 
-Lo script guarda le cartelle in `PLAYERS` e `PLAYERS/_STAFF`, prende circa 30 foto
-per persona (soprattutto dal MEDIADAY) e impara chi è il proprietario di ogni cartella.
-Scarica solo le anteprime, quindi è leggero. Ci vuole un po' la prima volta;
-può andare in sottofondo.
+In alto c'è il numero di versione e se MEGA è collegato (pallino verde).
+A destra, **«Cosa sta facendo»** mostra la fase, una barra di avanzamento e il registro
+di ogni passo. Lo stesso registro compare anche nel Terminale.
 
-Alla fine segnala:
-- **riferimenti deboli**: persone con poche foto utili (succede con lo staff).
-  Metti 3-5 primi piani nella cartella `primi_piani/COGNOME/` (es. `primi_piani/D'URBANO/`)
-  e rilancia **1**.
-- **persone che si assomigliano troppo**: di solito vuol dire che una cartella
-  contiene soprattutto foto di un altro. Vanno controllate.
+### Prima volta: imparare i volti
 
-Quando arriva un giocatore nuovo: crea la sua cartella su MEGA come sempre,
-mettici qualche foto e rilancia **1**. Impara solo i nuovi.
+Premi **«Impara i volti nuovi»**. Lo script legge le cartelle in `PLAYERS` e
+`PLAYERS/_STAFF`, prende circa 30 foto per persona (soprattutto dal MEDIADAY) e impara
+chi è il proprietario di ogni cartella. Su MEGA legge soltanto; scarica solo anteprime
+leggere e le cancella subito.
 
-## 3. Uso dopo ogni partita
+Alla fine può segnalare:
+- **riconoscimento debole**: persone con poche foto utili (succede con lo staff).
+  Metti 3-5 primi piani nella cartella `primi_piani/COGNOME/` dello script e premi di
+  nuovo «Impara i volti nuovi».
+- **persone che si assomigliano troppo**: di solito una cartella contiene soprattutto
+  foto di un altro. Va controllata.
 
-1. Avvia e scegli **2) Smista una cartella di foto**.
-2. Incolla il percorso della cartella `Foto` della partita. Va bene anche copiato
-   dalla barra di MEGA: `Cloud drive > 2026-27 > MATCH > SERIEBKT > G10_Sudtirol_Cesena_1_1 > Foto`.
-   Le sottocartelle dei fotografi vengono lette tutte.
-3. Conferma il nome della cartella di destinazione (es. `SERIE BKT / G10_SUDTIROL_CESENA`).
-4. Lo script scarica e analizza le foto. Intanto puoi fare altro.
-5. Si apre la **pagina di revisione** nel browser:
+Quando arriva qualcuno di nuovo, crea la sua cartella su MEGA come sempre e premi di
+nuovo «Impara i volti nuovi»: impara solo i nuovi.
+
+### Dopo ogni partita
+
+1. In **«Smista una partita»** incolla il percorso della cartella `Foto`
+   (va bene anche copiato dalla barra di MEGA) e premi **«Controlla»**.
+2. Controlla la destinazione proposta (es. `PLAYERS / <NOME> / SERIE BKT / G10_SUDTIROL_CESENA`)
+   e premi **«Avvia lo smistamento»**. Lo script scarica e analizza una foto alla volta.
+3. Alla fine premi **«Apri la revisione»**:
    - **Da verificare**: volti incerti. Clicca "È CIOFI?" se è giusto, oppure scegli
      dall'elenco. Quelli lasciati su "non copiare" non vengono copiati.
    - **Riconosciute**: raggruppate per persona. Clicca una miniatura per escluderla.
      Passando sopra con il mouse vedi la foto intera.
    - **Foto senza nessuno riconosciuto**: se vuoi le assegni a mano.
-6. Premi **Copia nelle cartelle**. La copia avviene dentro MEGA (non ricarica le foto).
+4. Premi **«Copia nelle cartelle»**. La copia avviene dentro MEGA.
 
-Se chiudi la pagina prima di copiare, l'analisi non si perde: **3) Riapri la revisione**.
+Le analisi restano in **«Analisi recenti»**: si può riaprire la revisione in un secondo momento.
 
 **Nomi dei file:** se la foto è nella sottocartella di un fotografo, il nome diventa
 `Rossi_DSC_0412.jpg`, così due fotografi con lo stesso nome file non si sovrascrivono.
-Le foto già presenti nella cartella del giocatore vengono saltate, quindi rilanciare
-è sicuro.
+Le foto già presenti nella cartella del giocatore vengono saltate.
 
 Ogni volto confermato in revisione migliora il riconoscimento per la volta dopo.
 
-## 4. Prova pilota (per Gianluca)
+### Prova pilota
 
-**4) Prova su una partita già smistata a mano** analizza una partita e confronta il
-risultato con le cartelle fatte a mano, **senza copiare nulla**. Dice quante foto
-avrebbe messo giuste, quante sbagliate e quante mancate, e salva il dettaglio in
+Dopo «Controlla», apri **«Prova su una partita già smistata a mano»** e premi
+**«Fai la prova»**. Lo script analizza la partita e confronta il risultato con le cartelle
+fatte a mano, **senza copiare nulla**: mostra precisione, assegnazioni sbagliate e
+mancate. Trova da solo la cartella della partita e ignora i volti imparati proprio da
+quella partita, così la prova è onesta. Il dettaglio per persona è in
 `lavori/<partita>/prova.csv`.
 
-Lo script trova da solo la cartella della partita nelle cartelle dei giocatori e,
-per una prova onesta, ignora i volti che aveva imparato proprio da quella partita.
-
-## 5. Impostazioni (`config.json`)
+## 3. Impostazioni (`config.json`)
 
 | Voce | A cosa serve |
 |---|---|
@@ -122,22 +126,23 @@ per una prova onesta, ignora i volti che aveva imparato proprio da quella partit
 | `soglia_dubbia` | sotto questa soglia un volto viene ignorato (avversari, pubblico) |
 | `modalita` | sempre `megacmd` (`cartella_locale` serve solo per i test) |
 
-## 6. Privacy
+## 4. Privacy
 
 - Le impronte dei volti (numeri, non foto) sono salvate solo in `dati/`, e solo per
   giocatori e staff.
 - I volti non riconosciuti (avversari, tifosi) vengono scartati subito, senza salvare nulla.
 - Le foto scaricate per l'analisi vengono cancellate dopo la copia.
 
-## 7. Problemi frequenti
+## 5. Problemi frequenti
 
 - **"Non trovo MEGAcmd"**: installalo da https://mega.io/cmd.
 - **"MEGAcmd non è collegato"**: apri MEGAcmd e fai `login`.
-- **La pagina non si apre**: copia nel browser l'indirizzo `http://127.0.0.1:...` scritto nella finestra.
+- **La pagina non si apre**: apri nel browser `http://127.0.0.1:8765`.
 - **Lento**: è normale alla prima analisi di una partita grande; il computer può essere usato per altro.
 
 ## Versioni
 
+- **1.3** (2 novembre 2026): l'app si usa dal browser, con pulsanti, barra di avanzamento e registro leggibile; le foto si scaricano e si analizzano una alla volta.
 - **1.2** (2 novembre 2026): la prova pilota esclude da sola la partita di prova; numero di versione nel menu.
 - **1.1** (2 novembre 2026): regole di sicurezza rigide per MEGA.
 - **1.0** (2 novembre 2026): prima versione.

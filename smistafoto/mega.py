@@ -103,14 +103,18 @@ class Mega:
                 return c
         return None
 
-    def _esegui(self, comando, *argomenti):
+    def _esegui(self, comando, *argomenti, attesa=900):
         if comando not in COMANDI_CONSENTITI:
             raise OperazioneVietata(f"Comando MEGA non consentito: {comando}")
         if any(str(a).startswith("-") and a != "-p" for a in argomenti) or \
                 ("-p" in argomenti and comando != "mkdir"):
             raise OperazioneVietata(f"Opzione non consentita per {comando}: {argomenti}")
         exe = os.path.join(self.cartella, "mega-" + comando + (".bat" if os.name == "nt" else ""))
-        r = subprocess.run([exe, *argomenti], capture_output=True)
+        try:
+            r = subprocess.run([exe, *argomenti], capture_output=True, timeout=attesa)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"MEGA non risponde da {attesa // 60} minuti ({comando}). "
+                               "Controlla la connessione e che MEGAcmd sia aperto.")
         return r.returncode, _decodifica(r.stdout), _decodifica(r.stderr)
 
     def _controlla_scrittura(self, percorso, livelli_minimi):
@@ -123,7 +127,7 @@ class Mega:
     # ---------------------------------------------------------------- lettura
 
     def chi_sono(self):
-        rc, out, _ = self._esegui("whoami")
+        rc, out, _ = self._esegui("whoami", attesa=120)
         return out.strip() if rc == 0 and "@" in out else None
 
     def elenca_nomi(self, cartella):
@@ -166,12 +170,11 @@ class Mega:
 
     # ---------------------------------------------- download (solo sul computer)
 
-    def scarica_cartella(self, remota, locale):
-        os.makedirs(locale, exist_ok=True)
-        rc, _, err = self._esegui("get", _pulito(remota), locale)
-        if rc != 0:
-            raise RuntimeError(f"Download non riuscito: {err.strip()}")
-        return os.path.join(locale, posixpath.basename(remota.rstrip("/")))
+    def scarica_file(self, remota, file_locale):
+        """Scarica un file sul computer. Restituisce il percorso, o None se non riesce."""
+        os.makedirs(os.path.dirname(file_locale), exist_ok=True)
+        rc, _, _ = self._esegui("get", _pulito(remota), file_locale)
+        return file_locale if rc == 0 and os.path.exists(file_locale) else None
 
     def foto_per_imparare(self, remota, file_locale):
         """Scarica l'anteprima (circa 1000 px, leggera); se manca, l'originale.
@@ -244,7 +247,7 @@ class CartellaLocale:
                     foto.append("/" + rel.replace(os.sep, "/"))
         return sorted(foto)
 
-    def scarica_cartella(self, remota, locale):
+    def scarica_file(self, remota, file_locale):
         return self._vero(remota)
 
     def foto_per_imparare(self, remota, file_locale):
