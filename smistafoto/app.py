@@ -305,7 +305,11 @@ def _gestore(app):
                 elif parti[0] == "l" and len(parti) == 2:
                     d = app._cartella_lavoro(parti[1])
                     lavoro, _ = carica_lavoro(d)
-                    self._invia(pagina_revisione(parti[1], lavoro), "text/html; charset=utf-8")
+                    prova = None
+                    if os.path.exists(os.path.join(d, "prova.json")):
+                        with open(os.path.join(d, "prova.json"), encoding="utf-8") as fh:
+                            prova = json.load(fh)
+                    self._invia(pagina_revisione(parti[1], lavoro, prova), "text/html; charset=utf-8")
                 elif parti[0] == "l" and len(parti) == 4 and parti[2] == "m":
                     d = app._cartella_lavoro(parti[1])
                     f = os.path.join(d, "miniature", os.path.basename(parti[3]))
@@ -553,13 +557,13 @@ function mostraEsito(a){
   if(a.in_corso||!a.tipo){e.innerHTML="";return}
   if(a.errore){e.innerHTML=`<div class="problema">Interrotto: ${esc(a.errore)}</div>`;return}
   if(a.tipo=="smista"&&a.lavoro)e.innerHTML=`<div class="riga"><a href="/l/${encodeURIComponent(a.lavoro)}"><button class="primo">Apri la revisione →</button></a></div>`;
-  else if(a.tipo=="prova"&&a.risultato)e.innerHTML="<b>Risultato della prova</b>"+tilesProva(a.risultato)+`<p class="nota">Dettaglio per persona nel file prova.csv dentro la cartella lavori/${esc(a.lavoro)}.</p>`;
+  else if(a.tipo=="prova"&&a.risultato)e.innerHTML="<b>Risultato della prova</b>"+tilesProva(a.risultato)+`<div class="riga"><a href="/l/${encodeURIComponent(a.lavoro)}"><button class="primo">Vedi i volti: verdi giusti, rossi no →</button></a></div><p class="nota">Dettaglio per persona nel file prova.csv dentro la cartella lavori/${esc(a.lavoro)}.</p>`;
   else e.innerHTML="";
 }
 function mostraLavori(L){
   if(!L.length)return;
   $("#lavori").innerHTML=`<table><tr><th>Partita</th><th>Data</th><th>Foto</th><th></th></tr>`+L.map(l=>{
-    let st;if(l.prova)st=`<span class="etich prova">Prova · ${l.prova.precisione}% precisione</span>`;
+    let st;if(l.prova)st=`<a href="/l/${encodeURIComponent(l.id)}"><span class="etich prova">Prova · ${l.prova.precisione}% precisione · vedi i volti →</span></a>`;
     else if(l.copiato)st=`<span class="etich fatto">Copiata</span>`;
     else st=`<a href="/l/${encodeURIComponent(l.id)}"><span class="etich da">Da rivedere →</span></a>`;
     return `<tr><td>${esc(l.evento)}<br><span class="nota">${esc(l.competizione)}</span></td><td>${esc(l.creato)}</td><td>${l.foto}</td><td>${st}</td></tr>`}).join("")+"</table>";

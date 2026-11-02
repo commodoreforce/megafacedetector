@@ -6,11 +6,12 @@ import json
 from . import VERSIONE
 
 
-def pagina_revisione(lavoro_id, lavoro):
+def pagina_revisione(lavoro_id, lavoro, prova=None):
     dati = {k: lavoro[k] for k in ("competizione", "evento", "persone", "foto", "volti", "copiato")}
     dati["versione"] = VERSIONE
     dati["id"] = lavoro_id
     dati["prova"] = bool(lavoro.get("prova_su"))
+    dati["esiti"] = (prova or {}).get("esiti")
     js = json.dumps(dati, ensure_ascii=False).replace("</", "<\\/")
     return PAGINA.replace("/*DATI*/null", js)
 
@@ -51,6 +52,12 @@ select{width:100%}
 .mini{position:relative;width:84px;height:84px;border-radius:6px;overflow:hidden;cursor:pointer;border:3px solid var(--ok)}
 .mini img{width:100%;height:100%;object-fit:cover;display:block}
 .mini.off{border-color:var(--no);opacity:.35}
+.mini.ok{border-color:#1e9e4a}.mini.no{border-color:#e0352b}
+.mini .px{position:absolute;left:2px;bottom:2px;background:rgba(0,0,0,.65);color:#fff;font-size:10px;padding:0 4px;border-radius:3px}
+.carta.no{border-color:#e0352b}.carta.okv{border-color:#1e9e4a}
+#provaBanner{background:var(--carta);border:2px solid var(--testo);border-radius:12px;padding:14px 16px;margin:20px 0 0}
+.leg{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin:0 4px 0 10px}
+.nascosto{display:none!important}
 .mini.off::after{content:"✕";position:absolute;inset:0;display:grid;place-items:center;font-size:30px;color:#fff;text-shadow:0 0 4px #000}
 .anteprima{position:fixed;right:16px;bottom:110px;max-width:min(520px,60vw);border:3px solid #0a0a0c;border-radius:8px;display:none;z-index:5;background:#000}
 .nessuno{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
@@ -78,6 +85,7 @@ th{color:var(--tenue);font-weight:600;font-size:12px}
 </style></head><body>
 <header><a href="/">← Smista Foto</a><h1 id="titolo"></h1><span class="sub" id="sottotitolo"></span></header>
 <main>
+<section id="provaBanner" hidden></section>
 <section id="simBox" hidden></section>
 <section id="secDubbi"><h2>Da verificare <small id="nDubbi"></small></h2>
 <p class="nota">Lo script non è sicuro. Clicca il nome se è giusto, oppure scegli la persona dall'elenco. Quelle lasciate su “non copiare” non vengono copiate.</p>
@@ -113,7 +121,7 @@ const dubbi=D.volti.filter(v=>v.stato=="dubbio");
 $("#nDubbi").textContent=dubbi.length;
 if(!dubbi.length)$("#secDubbi").hidden=true;
 for(const v of dubbi){
-  const c=document.createElement("div");c.className="carta";
+  const c=document.createElement("div");c.className="carta"+(E?(E[v.id]=="ok"?" okv":" no"):"");
   c.innerHTML=`<img class="volto" src="${B}/m/${v.mini}" alt=""><div class="info"><div class="foto">${esc(fotoPer[v.foto].relativo)}</div></div>`;
   hover(c.querySelector("img"),v.foto);
   const info=c.querySelector(".info");
@@ -123,6 +131,15 @@ for(const v of dubbi){
     b.title="somiglianza "+Math.round(s*100)+"%";
     b.onclick=()=>{sel.value=n;sel.onchange()};info.append(b)}
   info.append(sel);$("#dubbi").append(c)}
+const E=D.esiti;
+if(E){const s=D.volti.filter(v=>v.stato=="sicuro"),no=s.filter(v=>E[v.id]=="no").length;
+  $("#provaBanner").hidden=false;
+  $("#provaBanner").innerHTML=`<b>Prova</b> · confronto con lo smistamento fatto a mano:<span class="leg" style="background:#1e9e4a"></span>c'è anche a mano<span class="leg" style="background:#e0352b"></span>non c'è a mano (${no} su ${s.length} sicure).
+  Il numero in basso a sinistra di ogni volto è la sua larghezza in pixel: le facce piccole sono di solito persone sullo sfondo.
+  <div style="margin-top:10px"><button id="soloNo">Mostra solo le rosse</button></div>`;
+  let solo=false;$("#soloNo").onclick=()=>{solo=!solo;$("#soloNo").textContent=solo?"Mostra tutte":"Mostra solo le rosse";
+    document.querySelectorAll(".mini.ok").forEach(m=>m.classList.toggle("nascosto",solo));
+    document.querySelectorAll(".persona").forEach(p=>p.classList.toggle("nascosto",solo&&!p.querySelector(".mini.no")))}}
 const sicure=D.volti.filter(v=>v.stato=="sicuro");
 const perPersona={};for(const v of sicure)(perPersona[v.persona]??=[]).push(v);
 $("#nSicure").textContent=sicure.length+" volti, "+Object.keys(perPersona).length+" persone";
@@ -136,7 +153,9 @@ for(const p of persone.filter(p=>perPersona[p])){
     g.querySelectorAll(".mini").forEach(m=>m.classList.toggle("off",!tutte));
     e.target.textContent=tutte?"Escludi tutte":"Includi tutte";contaAgg();aggiorna()};
   for(const v of perPersona[p]){
-    const m=document.createElement("div");m.className="mini";m.innerHTML=`<img src="${B}/m/${v.mini}" alt="" loading="lazy">`;
+    const m=document.createElement("div");m.className="mini"+(E?" "+E[v.id]:"");
+    m.innerHTML=`<img src="${B}/m/${v.mini}" alt="" loading="lazy">`+(v.larghezza?`<span class="px">${v.larghezza}px</span>`:"");
+    if(E)m.title=E[v.id]=="ok"?"c'è anche nello smistamento a mano":"non c'è nello smistamento a mano";
     hover(m,v.foto);
     m.onclick=()=>{escluse.has(v.id)?escluse.delete(v.id):escluse.add(v.id);m.classList.toggle("off");contaAgg();aggiorna()};
     g.append(m)}
