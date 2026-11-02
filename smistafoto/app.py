@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import DATA_VERSIONE, VERSIONE
 from .flussi import (analizza_cartella, carica_lavoro, confronta, deboli, elenca_lavori,
-                     esegui_copia, impara, ricava_evento, trova_cartella_esistente)
+                     esegui_copia, impara, ricava_evento, simula_copia, trova_cartella_esistente)
 from .mega import collegamento, normalizza
 from .registro import Registro
 from .revisione import pagina_revisione
@@ -193,6 +193,15 @@ class App:
             self.attivita["risultato"] = esegui_copia(self.conn, self.rif, d, decisioni, self.reg)
         self.avvia("copia", lavoro)
 
+    def simula(self, lavoro_id, decisioni):
+        self._serve_collegamento()
+        d = self._cartella_lavoro(lavoro_id)
+
+        def lavoro():
+            self.attivita["lavoro"] = lavoro_id
+            self.attivita["risultato"] = simula_copia(self.conn, d, decisioni, self.reg)
+        self.avvia("simulazione", lavoro)
+
     def sfoglia(self, percorso):
         self._serve_collegamento()
         base = self.cfg.get("cartella_partite") or posixpath.join(
@@ -338,6 +347,9 @@ def _gestore(app):
                     if not c.get("esistente", "").strip():
                         raise RuntimeError("Indica la cartella della partita già smistata a mano.")
                     app.smista(c["sorgente"], c["competizione"], c["evento"], prova_su=c["esistente"].strip())
+                    r = {"ok": True}
+                elif len(parti) == 3 and parti[0] == "l" and parti[2] == "simula":
+                    app.simula(parti[1], c["decisioni"])
                     r = {"ok": True}
                 elif len(parti) == 3 and parti[0] == "l" and parti[2] == "conferma":
                     app.copia(parti[1], c["decisioni"])
