@@ -1,5 +1,6 @@
 """Le operazioni del programma: imparare i volti, analizzare una cartella,
-copiare le foto approvate, provare su una partita già smistata."""
+copiare le foto approvate, provare su una partita già smistata.
+Ogni operazione racconta cosa sta facendo nel registro (reg)."""
 
 import csv
 import json
@@ -14,12 +15,6 @@ from PIL import Image
 
 from .mega import e_foto
 from .volti import volto_ricorrente
-
-
-def _barra(i, n, testo=""):
-    print(f"\r  {i}/{n} {testo[:50]:<50}", end="", flush=True)
-    if i == n:
-        print()
 
 
 # ---------------------------------------------------------------- persone
@@ -51,26 +46,38 @@ def _campione(foto, quante, preferite):
     return scelte
 
 
-def impara(cfg, conn, volti, rif, cartella_dati, tutti=False):
+def impara(cfg, conn, volti, rif, cartella_dati, reg, tutti=False):
+    reg.inizia_fase("Leggo l'elenco di giocatori e staff")
+    reg.info(f"Leggo l'elenco delle cartelle in {cfg['cartella_giocatori']} e {cfg['cartella_staff']}…")
     persone = elenca_persone(cfg, conn)
     if not persone:
-        print("Non trovo cartelle di giocatori o staff. Controlla i percorsi in config.json.")
+        reg.errore("Non trovo cartelle di giocatori o staff. Controlla i percorsi in config.json.")
         return
+    n_g = sum(p[1] == "giocatore" for p in persone)
     da_fare = [p for p in persone if tutti or p[0] not in rif.info]
-    print(f"Persone trovate: {len(persone)}. Da imparare adesso: {len(da_fare)}.")
+    reg.info(f"Trovati {n_g} giocatori e {len(persone) - n_g} persone dello staff.")
+    if not da_fare:
+        reg.ok("Conosco già tutti. Niente da imparare.")
+        return
+    reg.info(f"Da imparare adesso: {len(da_fare)} persone. Per ognuna scarico circa "
+             f"{cfg['foto_per_imparare']} anteprime (solo sul computer, poi le cancello).")
     cartella_tmp = os.path.join(cartella_dati, "tmp_imparare")
     primi_piani = os.path.join(os.path.dirname(cartella_dati), "primi_piani")
+    deboli = []
     for n, (nome, tipo, cartella) in enumerate(da_fare, 1):
-        print(f"\n[{n}/{len(da_fare)}] {nome} ({tipo})")
+        reg.inizia_fase(f"Persona {n} di {len(da_fare)}: {nome}")
+        reg.info(f"{nome} ({tipo}): cerco le sue foto su MEGA…")
         try:
             foto = conn.trova_foto(cartella)
         except RuntimeError as e:
-            print("  ", e)
+            reg.avviso(f"{nome}: {e}")
             foto = []
         campione = _campione(foto, cfg["foto_per_imparare"], cfg["cartelle_preferite_per_imparare"])
+        reg.info(f"{nome}: {len(foto)} foto in archivio, ne guardo {len(campione)}.")
+        reg.inizia_fase(f"Persona {n} di {len(da_fare)}: {nome}", len(campione))
         per_foto, fonti_foto = [], []
         for i, remota in enumerate(campione, 1):
-            _barra(i, len(campione), posixpath.basename(remota))
+            reg.passo(i, posixpath.basename(remota))
             locale = conn.foto_per_imparare(remota, os.path.join(cartella_tmp, f"{i}{os.path.splitext(remota)[1]}"))
             if not locale:
                 continue
@@ -80,8 +87,7 @@ def impara(cfg, conn, volti, rif, cartella_dati, tutti=False):
             if conn.temporaneo:
                 os.remove(locale)
         scelte = [(fonti_foto[i], e) for i, e in volto_ricorrente(per_foto)]
-        # primi piani forniti a mano: primi_piani/COGNOME/*.jpg
-        extra = os.path.join(primi_piani, nome)
+        extra = os.path.join(primi_piani, nome)  # primi piani forniti a mano
         if os.path.isdir(extra):
             for f in sorted(os.listdir(extra)):
                 if e_foto(f):
@@ -90,26 +96,37 @@ def impara(cfg, conn, volti, rif, cartella_dati, tutti=False):
                         scelte.append(("primi_piani/" + f, trovati[0]["impronta"]))
         rif.imposta(nome, tipo, cartella, [e for _, e in scelte], [p for p, _ in scelte])
         rif.salva()
-        print(f"  imparato da {len(scelte)} foto")
+        if len(scelte) < 4:
+            deboli.append(nome)
+            reg.avviso(f"{nome}: imparato solo da {len(scelte)} foto. Servono primi piani.")
+        else:
+            reg.ok(f"{nome}: imparato da {len(scelte)} foto.")
     shutil.rmtree(cartella_tmp, ignore_errors=True)
-    rapporto_riferimenti(rif)
+    reg.inizia_fase("Controllo finale")
+    rapporto_riferimenti(rif, reg)
+    reg.ok("Apprendimento finito.")
 
 
-def rapporto_riferimenti(rif):
-    deboli = [n for n, m in rif.impronte.items() if len(m) < 4]
-    if deboli:
-        print("\nRiferimenti deboli (meno di 4 foto utili): " + ", ".join(sorted(deboli)))
-        print("Metti 3-5 primi piani di ciascuno in primi_piani/COGNOME/ e rilancia 'Impara'.")
+def deboli(rif):
+    return sorted(n for n, m in rif.impronte.items() if len(m) < 4)
+
+
+def rapporto_riferimenti(rif, reg):
+    d = deboli(rif)
+    if d:
+        reg.avviso("Riferimenti deboli: " + ", ".join(d) + ". Metti 3-5 primi piani di ciascuno "
+                   "nella cartella primi_piani/COGNOME dello script e premi di nuovo 'Impara i volti'.")
     nomi = [n for n, m in rif.impronte.items() if len(m)]
     centri = {}
     for n in nomi:
         c = rif.impronte[n].mean(axis=0)
         centri[n] = c / (np.linalg.norm(c) + 1e-9)
-    sospetti = [(a, b, float(centri[a] @ centri[b])) for i, a in enumerate(nomi)
-                for b in nomi[i + 1:] if centri[a] @ centri[b] > 0.6]
-    for a, b, s in sospetti:
-        print(f"Attenzione: {a} e {b} si assomigliano troppo ({s:.2f}). "
-              "Forse una delle due cartelle ha imparato il volto sbagliato.")
+    for i, a in enumerate(nomi):
+        for b in nomi[i + 1:]:
+            s = float(centri[a] @ centri[b])
+            if s > 0.6:
+                reg.avviso(f"{a} e {b} si assomigliano troppo ({s:.2f}): forse una delle due "
+                           "cartelle contiene soprattutto foto dell'altro. Va controllato.")
 
 
 # ---------------------------------------------------------------- evento
@@ -120,7 +137,7 @@ def ricava_evento(cfg, sorgente):
     parti = [p for p in sorgente.split("/") if p]
     maiuscole = [p.upper() for p in parti]
     if "MATCH" not in maiuscole or maiuscole.index("MATCH") + 2 >= len(parti):
-        return None, None
+        return "", ""
     i = maiuscole.index("MATCH")
     comp = parti[i + 1]
     chiave = re.sub(r"[\s_\-]", "", comp.upper())
@@ -144,48 +161,59 @@ def trova_cartella_esistente(conn, rif, competizione, evento):
     """Cerca nelle cartelle dei giocatori la cartella della partita già smistata.
     Prima il nome esatto, poi una cartella che inizi con lo stesso numero di giornata."""
     giornata = evento.split("_")[0] + "_"
-    candidati = {}
+    candidati, guardati = {}, 0
     for nome, info in rif.info.items():
         if info.get("tipo") != "giocatore":
             continue
+        guardati += 1
         for c in conn.elenca_nomi(posixpath.join(info["cartella"], competizione)):
             if c.upper() == evento.upper():
                 return c
             if c.upper().startswith(giornata.upper()):
                 candidati[c] = candidati.get(c, 0) + 1
-        if len(candidati) == 1 and sum(candidati.values()) >= 3:
+        if (len(candidati) == 1 and sum(candidati.values()) >= 3) or guardati >= 10:
             break
-    return max(candidati, key=candidati.get) if len(candidati) == 1 else None
+    return max(candidati, key=candidati.get) if len(candidati) == 1 else ""
 
 
 # ---------------------------------------------------------------- analisi
 
-def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento, cartella_lavori):
+def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
+                      cartella_lavori, reg, prova_su=None):
     if not rif.impronte:
-        raise RuntimeError("Prima bisogna imparare i volti (voce 1 del menu).")
-    lavoro_dir = os.path.join(cartella_lavori, f"{evento}_{time.strftime('%Y%m%d-%H%M')}")
+        raise RuntimeError("Prima bisogna imparare i volti.")
+    lavoro_dir = os.path.join(cartella_lavori, f"{evento}_{time.strftime('%Y%m%d-%H%M%S')}")
     mini_dir = os.path.join(lavoro_dir, "miniature")
+    tmp_dir = os.path.join(lavoro_dir, "tmp")
     os.makedirs(mini_dir, exist_ok=True)
 
-    print("Cerco le foto...")
+    reg.inizia_fase("Cerco le foto su MEGA")
+    reg.info(f"Cerco le foto in {sorgente}…")
     remote = conn.trova_foto(sorgente)
     if not remote:
         raise RuntimeError("Nella cartella non ci sono foto.")
-    print(f"{len(remote)} foto. Le scarico (può volerci un po')...")
-    radice_locale = conn.scarica_cartella(sorgente, os.path.join(lavoro_dir, "scaricate"))
+    sotto = sorted({posixpath.relpath(r, sorgente).split("/")[0]
+                    for r in remote if "/" in posixpath.relpath(r, sorgente)})
+    reg.info(f"Trovate {len(remote)} foto" + (f" (sottocartelle: {', '.join(sotto)})." if sotto else "."))
+    reg.info("Scarico e analizzo una foto alla volta. Le foto restano sul computer solo il tempo dell'analisi.")
 
     soglia_s, soglia_d, margine = cfg["soglia_sicura"], cfg["soglia_dubbia"], cfg["margine"]
     foto, lista_volti, impronte = [], [], []
-    print("Riconosco i volti...")
+    reg.inizia_fase("Riconosco i volti", len(remote))
+    illeggibili = 0
     for i, r in enumerate(remote, 1):
-        _barra(i, len(remote), posixpath.basename(r))
         rel = posixpath.relpath(r, sorgente)
-        locale = os.path.join(radice_locale, *rel.split("/"))
-        trovati, img = volti.analizza(locale)
+        reg.passo(i, rel)
+        locale = conn.scarica_file(r, os.path.join(tmp_dir, f"{i}{os.path.splitext(r)[1]}"))
+        trovati, img = volti.analizza(locale) if locale else ([], None)
+        if conn.temporaneo and locale and os.path.exists(locale):
+            os.remove(locale)
         fid = len(foto)
         anteprima = f"f{fid}.jpg"
         if img is not None:
             _salva_ritaglio(img, None, os.path.join(mini_dir, anteprima), 520)
+        else:
+            illeggibili += 1
         foto.append({"id": fid, "remoto": r, "relativo": rel,
                      "nome_dest": _nome_destinazione(cfg, rel), "anteprima": anteprima})
         presenti = {}
@@ -213,9 +241,14 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento, car
                     presenti[n1] = vid
             lista_volti.append(voce)
             impronte.append(v["impronta"])
+        if i % 25 == 0:
+            reg.info(f"Analizzate {i} foto su {len(remote)}…")
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    if illeggibili:
+        reg.avviso(f"{illeggibili} foto non si sono potute aprire (formato non supportato o download fallito).")
 
     lavoro = {"sorgente": sorgente, "competizione": competizione, "evento": evento,
-              "radice_locale": radice_locale, "temporaneo": conn.temporaneo,
+              "creato": time.strftime("%d/%m/%Y %H:%M"), "prova_su": prova_su,
               "persone": {n: i["tipo"] for n, i in sorted(rif.info.items())},
               "cartelle_persone": {n: i["cartella"] for n, i in rif.info.items()},
               "foto": foto, "volti": lista_volti, "copiato": False}
@@ -223,9 +256,10 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento, car
         json.dump(lavoro, f, ensure_ascii=False)
     np.save(os.path.join(lavoro_dir, "impronte.npy"),
             np.asarray(impronte, np.float32).reshape(-1, 128))
-    sicuri = sum(v["stato"] == "sicuro" for v in lista_volti)
-    print(f"Fatto: {sicuri} volti riconosciuti con sicurezza, "
-          f"{len(lista_volti) - sicuri} da verificare.")
+    sicuri = [v for v in lista_volti if v["stato"] == "sicuro"]
+    reg.ok(f"Analisi finita: {len(sicuri)} volti riconosciuti con sicurezza "
+           f"({len({v['persona'] for v in sicuri})} persone), "
+           f"{len(lista_volti) - len(sicuri)} da verificare.")
     return lavoro_dir
 
 
@@ -248,26 +282,37 @@ def carica_lavoro(lavoro_dir):
     return lavoro, np.load(os.path.join(lavoro_dir, "impronte.npy"))
 
 
-def ultimo_lavoro(cartella_lavori, anche_copiati=False):
+def elenca_lavori(cartella_lavori):
+    """Le analisi salvate, dalla più recente."""
     if not os.path.isdir(cartella_lavori):
-        return None
-    lavori = sorted((os.path.join(cartella_lavori, d) for d in os.listdir(cartella_lavori)),
-                    key=os.path.getmtime, reverse=True)
-    for d in lavori:
-        p = os.path.join(d, "lavoro.json")
+        return []
+    lavori = []
+    for d in os.listdir(cartella_lavori):
+        p = os.path.join(cartella_lavori, d, "lavoro.json")
         if os.path.exists(p):
             with open(p, encoding="utf-8") as f:
-                if anche_copiati or not json.load(f).get("copiato"):
-                    return d
-    return None
+                l = json.load(f)
+            prova = None
+            pp = os.path.join(cartella_lavori, d, "prova.json")
+            if os.path.exists(pp):
+                with open(pp, encoding="utf-8") as f:
+                    prova = json.load(f)
+            lavori.append({"id": d, "evento": l["evento"], "competizione": l["competizione"],
+                           "creato": l.get("creato", ""), "copiato": l.get("copiato", False),
+                           "foto": len(l["foto"]), "prova": prova,
+                           "ordine": os.path.getmtime(p)})
+    return sorted(lavori, key=lambda x: -x["ordine"])
 
 
 # ---------------------------------------------------------------- copia
 
-def esegui_copia(conn, rif, lavoro_dir, decisioni, stato):
-    """decisioni: lista di {foto, persona, volto (facoltativo)}.
-    stato: dizionario aggiornato durante la copia (lo legge la pagina)."""
+def esegui_copia(conn, rif, lavoro_dir, decisioni, reg):
+    """decisioni: lista di {foto, persona, volto (facoltativo)}."""
     lavoro, impronte = carica_lavoro(lavoro_dir)
+    if lavoro.get("copiato"):
+        raise RuntimeError("Questa analisi è già stata copiata.")
+    if lavoro.get("prova_su"):
+        raise RuntimeError("Questa era una prova: non si copia. Avvia lo smistamento normale.")
     foto = {f["id"]: f for f in lavoro["foto"]}
     piano, visti = {}, set()
     for d in decisioni:
@@ -278,62 +323,73 @@ def esegui_copia(conn, rif, lavoro_dir, decisioni, stato):
         cartella = posixpath.join(lavoro["cartelle_persone"][d["persona"]],
                                   lavoro["competizione"], lavoro["evento"])
         piano.setdefault(cartella, []).append((foto[chiave[0]], d["persona"]))
-    stato.update(totale=sum(len(v) for v in piano.values()), fatte=0,
-                 copiate=0, gia_presenti=0, errori=[])
-    registro = []
+    totale = sum(len(v) for v in piano.values())
+    reg.info(f"Copio {totale} foto nelle cartelle di {len(piano)} persone, "
+             f"sottocartella {lavoro['competizione']}/{lavoro['evento']}.")
+    reg.inizia_fase("Copio le foto su MEGA", totale)
+    fatte = copiate = gia = 0
+    errori, registro = [], []
     for cartella, elementi in piano.items():
+        persona = elementi[0][1]
         try:
             presenti = set(conn.elenca_nomi(cartella))
             if not presenti:
                 conn.crea_cartella(cartella)
-        except Exception as e:  # cartella non consentita o MEGA irraggiungibile: salta tutto il gruppo
-            for f, persona in elementi:
-                stato["errori"].append(f"{f['nome_dest']} → {persona}: {e}")
-                registro.append([persona, f["relativo"], cartella, f"errore: {e}"])
-                stato["fatte"] += 1
+        except Exception as e:  # cartella non consentita o MEGA irraggiungibile: salta il gruppo
+            reg.errore(f"{persona}: non posso usare la cartella ({e}). Salto le sue foto.")
+            for f, p in elementi:
+                errori.append(f"{f['nome_dest']} → {p}: {e}")
+                registro.append([p, f["relativo"], cartella, f"errore: {e}"])
+                fatte += 1
             continue
-        for f, persona in elementi:
-            esito = "copiata"
+        c0 = copiate
+        for f, p in elementi:
             originale = posixpath.basename(f["relativo"])
             dest = posixpath.join(cartella, f["nome_dest"])
             if f["nome_dest"] in presenti or originale in presenti or conn.esiste(dest):
                 esito = "già presente"
-                stato["gia_presenti"] += 1
+                gia += 1
             else:
                 try:
                     conn.copia(f["remoto"], dest)  # rifiuta comunque se dest esiste
-                    stato["copiate"] += 1
+                    esito = "copiata"
+                    copiate += 1
                 except Exception as e:
                     esito = f"errore: {e}"
-                    stato["errori"].append(f"{f['nome_dest']} → {persona}: {e}")
-            registro.append([persona, f["relativo"], posixpath.join(cartella, f["nome_dest"]), esito])
-            stato["fatte"] += 1
+                    errori.append(f"{f['nome_dest']} → {p}: {e}")
+            registro.append([p, f["relativo"], dest, esito])
+            fatte += 1
+            reg.passo(fatte, f"{p}: {f['nome_dest']}")
+        reg.info(f"{persona}: {copiate - c0} foto copiate.")
 
     with open(os.path.join(lavoro_dir, "registro.csv"), "w", newline="", encoding="utf-8-sig") as fh:
         w = csv.writer(fh, delimiter=";")
         w.writerow(["persona", "foto", "destinazione", "esito"])
         w.writerows(registro)
 
-    # i volti confermati migliorano i riferimenti per la prossima volta
-    for d in decisioni:
+    for d in decisioni:  # i volti confermati migliorano i riferimenti
         if d.get("volto") is not None:
             rif.aggiungi_conferma(d["persona"], impronte[int(d["volto"])],
                                   "conferma:" + lavoro["sorgente"])
     rif.salva()
-
     lavoro["copiato"] = True
     with open(os.path.join(lavoro_dir, "lavoro.json"), "w", encoding="utf-8") as fh:
         json.dump(lavoro, fh, ensure_ascii=False)
-    if lavoro.get("temporaneo"):
-        shutil.rmtree(os.path.join(lavoro_dir, "scaricate"), ignore_errors=True)
-    stato["finito"] = True
+
+    for e in errori[:20]:
+        reg.errore(e)
+    (reg.ok if not errori else reg.avviso)(
+        f"Copia finita: {copiate} copiate, {gia} già presenti (saltate), {len(errori)} errori.")
+    return {"copiate": copiate, "gia_presenti": gia, "errori": errori}
 
 
 # ---------------------------------------------------------------- prova
 
-def confronta(conn, lavoro_dir, cartella_esistente):
+def confronta(conn, lavoro_dir, cartella_esistente, reg):
     """Confronta i risultati con lo smistamento già fatto a mano. Non copia nulla."""
     lavoro, _ = carica_lavoro(lavoro_dir)
+    reg.inizia_fase("Confronto con lo smistamento a mano")
+    reg.info(f"Leggo le cartelle {lavoro['competizione']}/{cartella_esistente} di ogni persona…")
     nomi_foto = {f["id"]: posixpath.basename(f["relativo"]) for f in lavoro["foto"]}
     insieme_nomi = set(nomi_foto.values())
     vero = set()
@@ -344,34 +400,38 @@ def confronta(conn, lavoro_dir, cartella_esistente):
                 vero.add((persona, n))
     sicuri = {(v["persona"], nomi_foto[v["foto"]]) for v in lavoro["volti"] if v["stato"] == "sicuro"}
     dubbi = {(v["persona"], nomi_foto[v["foto"]]) for v in lavoro["volti"] if v["stato"] == "dubbio"} - sicuri
-
     if not vero:
-        print("Non trovo foto di questa partita nelle cartelle dei giocatori: controlla il nome della cartella.")
-        return
+        reg.errore("Non trovo foto di questa partita nelle cartelle delle persone: "
+                   "controlla il nome della cartella già smistata.")
+        return None
     giuste = sicuri & vero
-    print("\n=== RISULTATO DELLA PROVA ===")
-    print(f"Assegnazioni fatte a mano:            {len(vero)}")
-    print(f"Proposte sicure dello script:         {len(sicuri)}")
-    print(f"  di cui giuste:                      {len(giuste)} "
-          f"({100 * len(giuste) / max(1, len(sicuri)):.0f}% di precisione)")
-    print(f"  sbagliate (persona sbagliata):      {len(sicuri - vero)}")
-    print(f"Trovate automaticamente:              {100 * len(giuste) / len(vero):.0f}% del lavoro fatto a mano")
-    print(f"Altre trovate tra i dubbi:            {len(dubbi & vero)}")
-    print(f"Mancate del tutto:                    {len(vero - sicuri - dubbi)}")
-
-    righe = []
+    risultato = {
+        "a_mano": len(vero), "proposte": len(sicuri), "giuste": len(giuste),
+        "sbagliate": len(sicuri - vero),
+        "precisione": round(100 * len(giuste) / max(1, len(sicuri))),
+        "copertura": round(100 * len(giuste) / len(vero)),
+        "tra_i_dubbi": len(dubbi & vero), "mancate": len(vero - sicuri - dubbi),
+        "per_persona": [],
+    }
     for persona in sorted({p for p, _ in vero | sicuri}):
         v = {n for p, n in vero if p == persona}
         s = {n for p, n in sicuri if p == persona}
-        righe.append([persona, len(v), len(s & v), len(s - v), len(v - s)])
+        risultato["per_persona"].append({"persona": persona, "a_mano": len(v), "giuste": len(s & v),
+                                         "sbagliate": len(s - v), "mancate": len(v - s)})
+    with open(os.path.join(lavoro_dir, "prova.json"), "w", encoding="utf-8") as fh:
+        json.dump(risultato, fh, ensure_ascii=False)
     with open(os.path.join(lavoro_dir, "prova.csv"), "w", newline="", encoding="utf-8-sig") as fh:
         w = csv.writer(fh, delimiter=";")
         w.writerow(["persona", "a mano", "giuste", "in più (sbagliate)", "mancate"])
-        w.writerows(righe)
+        for r in risultato["per_persona"]:
+            w.writerow([r["persona"], r["a_mano"], r["giuste"], r["sbagliate"], r["mancate"]])
         w.writerow([])
         w.writerow(["dettaglio errori: persona", "foto", "tipo"])
         for p, n in sorted(sicuri - vero):
             w.writerow([p, n, "proposta ma non c'è nello smistamento a mano"])
         for p, n in sorted(vero - sicuri):
             w.writerow([p, n, "c'è a mano ma lo script non l'ha messa tra le sicure"])
-    print(f"\nDettaglio per persona: {os.path.join(lavoro_dir, 'prova.csv')}")
+    reg.ok(f"Prova finita: {risultato['giuste']} giuste su {risultato['proposte']} proposte "
+           f"({risultato['precisione']}% di precisione), {risultato['sbagliate']} sbagliate. "
+           f"Trovato da solo il {risultato['copertura']}% del lavoro fatto a mano.")
+    return risultato
