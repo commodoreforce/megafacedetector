@@ -155,8 +155,10 @@ for nome in os.listdir(cartella):
         if "subprocess" in testo and nome != "mega.py":
             print(f"ERRORE: {nome} esegue comandi esterni")
             errori += 1
+        # operazioni su file del COMPUTER (mai su MEGA, che si raggiunge solo da mega.py):
+        # flussi.py cancella le foto temporanee scaricate, volti.py salva il modello scaricato
         for vietato in ("os.remove(", "shutil.rmtree(", "os.rename(", "os.replace("):
-            if vietato in testo and nome != "flussi.py":
+            if vietato in testo and nome not in ("flussi.py", "volti.py"):
                 print(f"ERRORE: {nome} contiene {vietato}")
                 errori += 1
 
