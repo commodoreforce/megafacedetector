@@ -1,0 +1,26 @@
+{
+  "modalita": "megacmd",
+  "radice_locale": "",
+
+  "cartella_giocatori": "/2026-27/PLAYERS",
+  "cartella_staff": "/2026-27/PLAYERS/_STAFF",
+
+  "competizioni": {
+    "SERIEBKT": "SERIE BKT",
+    "COPPAITALIA": "COPPA_ITALIA",
+    "AMICHEVOLI": "AMICHEVOLI_PRE_SEASON",
+    "AMICHEVOLIPRESEASON": "AMICHEVOLI_PRE_SEASON"
+  },
+  "nome_partita": { "maiuscolo": true, "togli_risultato": true },
+  "prefisso_fotografo": true,
+
+  "soglia_sicura": 0.5,
+  "soglia_dubbia": 0.36,
+  "margine": 0.06,
+
+  "foto_per_imparare": 30,
+  "cartelle_preferite_per_imparare": ["MEDIADAY"],
+  "escludi_da_imparare": [],
+  "lato_lungo_analisi": 2400,
+  "volto_minimo_px": 40
+}
