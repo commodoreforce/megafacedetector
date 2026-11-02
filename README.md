@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **1.5** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
+Versione **1.6** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
 
 Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro cartelle:
 
@@ -77,8 +77,10 @@ leggere e le cancella subito.
 
 Alla fine può segnalare:
 - **riconoscimento debole**: persone con poche foto utili (succede con lo staff).
-  Metti 3-5 primi piani nella cartella `primi_piani/COGNOME/` dello script e premi di
-  nuovo «Impara i volti nuovi».
+  Apri **«Elenco delle persone»**, premi **«Primi piani…»** accanto al nome, scegli
+  3-5 foto in cui si vede bene il volto e confermi di reimpararlo.
+- **cartelle che non sono persone** (es. `00VARIE`): nell'elenco premi **«Escludi»**.
+  Su MEGA non cambia nulla, lo script semplicemente la ignora.
 - **persone che si assomigliano troppo**: di solito una cartella contiene soprattutto
   foto di un altro. Va controllata.
 
@@ -144,6 +146,7 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 
 ## Versioni
 
+- **1.6** (2 novembre 2026): elenco delle persone nell'app, con «Escludi» per le cartelle che non sono persone e caricamento dei primi piani dal browser; corrette le righe di intestazione di MEGAcmd lette come nomi.
 - **1.5** (2 novembre 2026): corretto il collegamento a MEGAcmd sul Mac ("mega-exec: command not found").
 - **1.4** (2 novembre 2026): semaforo del collegamento a MEGA, ricontrollo automatico, riconoscimento più robusto dell'account collegato.
 - **1.3** (2 novembre 2026): l'app si usa dal browser, con pulsanti, barra di avanzamento e registro leggibile; le foto si scaricano e si analizzano una alla volta.

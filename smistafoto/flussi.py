@@ -19,13 +19,13 @@ from .volti import volto_ricorrente
 
 # ---------------------------------------------------------------- persone
 
-def elenca_persone(cfg, conn):
+def elenca_persone(cfg, conn, esclusi=()):
     """Giocatori: cartelle dentro PLAYERS che non iniziano con '_'.
     Staff: cartelle dentro PLAYERS/_STAFF."""
     persone = []
     for tipo, base in (("giocatore", cfg["cartella_giocatori"]), ("staff", cfg["cartella_staff"])):
         for nome in conn.elenca_nomi(base):
-            if nome.startswith("_") or "." in nome[-5:]:
+            if nome.startswith("_") or "." in nome[-5:] or nome in esclusi:
                 continue
             persone.append((nome, tipo, posixpath.join(base, nome)))
     return persone
@@ -46,15 +46,20 @@ def _campione(foto, quante, preferite):
     return scelte
 
 
-def impara(cfg, conn, volti, rif, cartella_dati, reg, tutti=False):
+def impara(cfg, conn, volti, rif, cartella_dati, reg, tutti=False, solo=None, esclusi=()):
     reg.inizia_fase("Leggo l'elenco di giocatori e staff")
     reg.info(f"Leggo l'elenco delle cartelle in {cfg['cartella_giocatori']} e {cfg['cartella_staff']}…")
-    persone = elenca_persone(cfg, conn)
+    persone = elenca_persone(cfg, conn, esclusi)
+    if esclusi:
+        reg.info("Escluse perché non sono persone: " + ", ".join(sorted(esclusi)) + ".")
     if not persone:
         reg.errore("Non trovo cartelle di giocatori o staff. Controlla i percorsi in config.json.")
         return
     n_g = sum(p[1] == "giocatore" for p in persone)
-    da_fare = [p for p in persone if tutti or p[0] not in rif.info]
+    if solo:
+        da_fare = [p for p in persone if p[0] in solo]
+    else:
+        da_fare = [p for p in persone if tutti or p[0] not in rif.info]
     reg.info(f"Trovati {n_g} giocatori e {len(persone) - n_g} persone dello staff.")
     if not da_fare:
         reg.ok("Conosco già tutti. Niente da imparare.")
@@ -114,8 +119,8 @@ def deboli(rif):
 def rapporto_riferimenti(rif, reg):
     d = deboli(rif)
     if d:
-        reg.avviso("Riferimenti deboli: " + ", ".join(d) + ". Metti 3-5 primi piani di ciascuno "
-                   "nella cartella primi_piani/COGNOME dello script e premi di nuovo 'Impara i volti'.")
+        reg.avviso("Riferimenti deboli: " + ", ".join(d) + ". Aggiungi 3-5 primi piani "
+                   "dall'«Elenco delle persone» (pulsante «Primi piani…»).")
     nomi = [n for n, m in rif.impronte.items() if len(m)]
     centri = {}
     for n in nomi:
