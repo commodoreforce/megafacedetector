@@ -222,6 +222,7 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
         foto.append({"id": fid, "remoto": r, "relativo": rel,
                      "nome_dest": _nome_destinazione(cfg, rel), "anteprima": anteprima})
         presenti = {}
+        largo_max = trovati[0]["riquadro"][2] if trovati else 1
         for v in trovati:
             classifica = rif.classifica(v["impronta"])
             if not classifica or classifica[0][0] < soglia_d:
@@ -233,7 +234,8 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
             mini = f"v{vid}.jpg"
             _salva_ritaglio(img, v["riquadro"], os.path.join(mini_dir, mini), 200)
             voce = {"id": vid, "foto": fid, "mini": mini, "stato": stato, "persona": n1,
-                    "punteggio": round(s1, 3),
+                    "punteggio": round(s1, 3), "larghezza": int(v["riquadro"][2]),
+                    "relativa": round(v["riquadro"][2] / largo_max, 2),
                     "alternative": [[n, round(s, 3)] for s, n in classifica[1:3] if s >= soglia_d - 0.05]}
             if stato == "sicuro":
                 if n1 in presenti:  # la stessa persona due volte nella stessa foto
@@ -471,7 +473,17 @@ def confronta(conn, lavoro_dir, cartella_esistente, reg):
         "copertura": round(100 * len(giuste) / len(vero)),
         "tra_i_dubbi": len(dubbi & vero), "mancate": len(vero - sicuri - dubbi),
         "per_persona": [],
+        # per ogni volto: "ok" se la stessa assegnazione c'è anche nello smistamento a mano
+        "esiti": {str(v["id"]): ("ok" if (v["persona"], nomi_foto[v["foto"]]) in vero else "no")
+                  for v in lavoro["volti"]},
     }
+    sbagliate = [v for v in lavoro["volti"] if v["stato"] == "sicuro"
+                 and (v["persona"], nomi_foto[v["foto"]]) not in vero and "relativa" in v]
+    if sbagliate:
+        piccoli = sum(v["relativa"] < 0.5 for v in sbagliate)
+        risultato["sbagliate_sfondo"] = piccoli
+        reg.info(f"Delle {len(sbagliate)} assegnazioni che non coincidono, {piccoli} sono volti piccoli "
+                 "(meno di metà del volto più grande della foto): probabilmente persone sullo sfondo.")
     for persona in sorted({p for p, _ in vero | sicuri}):
         v = {n for p, n in vero if p == persona}
         s = {n for p, n in sicuri if p == persona}
