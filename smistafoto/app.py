@@ -36,6 +36,7 @@ class App:
         self.attivita = {"tipo": None, "in_corso": False, "lavoro": None, "risultato": None, "errore": None}
         self._lucchetto = threading.Lock()
         self._cache_lavori = (0, [], None)
+        self._ultimo_controllo = 0
 
     # ------------------------------------------------------------ attività
 
@@ -62,22 +63,29 @@ class App:
         if not self.account:
             raise RuntimeError(self.problema or "MEGA non è collegato.")
 
-    def collega(self):
+    def collega(self, silenzioso=False):
+        self._ultimo_controllo = time.time()
+
         def lavoro():
             self.reg.inizia_fase("Controllo il collegamento")
-            self.reg.info("Controllo che MEGAcmd sia installato e collegato…")
+            if not silenzioso:
+                self.reg.info("Controllo che MEGAcmd sia installato e collegato…")
             self.account, self.problema = None, None
             try:
                 self.conn = collegamento(self.cfg)
             except Exception as e:
                 self.problema = str(e)
-                self.reg.errore(self.problema)
+                if not silenzioso:
+                    self.reg.errore(self.problema)
                 return
             chi = self.conn.chi_sono()
             if not chi:
-                self.problema = ("MEGAcmd non è collegato a nessun account. Apri MEGAcmd, scrivi "
-                                 "login seguito dall'email del club, inserisci la password, poi premi «Riprova».")
-                self.reg.errore(self.problema)
+                self.problema = ("MEGAcmd risponde ma non risulta collegato a un account. Nella finestra di "
+                                 "MEGAcmd scrivi login seguito dall'email del club e la password. "
+                                 "Il semaforo diventa verde da solo entro qualche secondo.")
+                if not silenzioso:
+                    self.reg.errore(self.problema)
+                    self.reg.info("Risposta di MEGAcmd: " + getattr(self.conn, "risposta_whoami", "?"))
                 return
             if self.volti is None:
                 self.reg.info("Carico i modelli di riconoscimento dei volti…")
@@ -147,12 +155,22 @@ class App:
         return os.path.join(self.lavori, lavoro_id)
 
     def stato(self, dalla):
+        # finché MEGA non è collegato, ricontrolla da solo ogni 15 secondi
+        if not self.account and not self.attivita["in_corso"] and time.time() - self._ultimo_controllo > 15:
+            try:
+                self.collega(silenzioso=True)
+            except RuntimeError:
+                pass
+        if self.attivita["in_corso"] and self.attivita["tipo"] == "collegamento":
+            semaforo = "giallo"
+        else:
+            semaforo = "verde" if self.account else "rosso"
         g = sum(1 for i in self.rif.info.values() if i.get("tipo") == "giocatore")
         a = dict(self.attivita)
         if a.get("inizio"):
             a["secondi"] = int(time.time() - a["inizio"])
         return {"versione": VERSIONE, "data_versione": DATA_VERSIONE,
-                "account": self.account, "problema": self.problema,
+                "account": self.account, "problema": self.problema, "semaforo": semaforo,
                 "persone": {"giocatori": g, "staff": len(self.rif.info) - g, "deboli": deboli(self.rif)},
                 "attivita": a, "registro": self.reg.stato(dalla),
                 "lavori": self._lavori()}
@@ -288,9 +306,13 @@ HOME = r"""<!doctype html>
 header{background:#0a0a0c;color:#f4f4f0;padding:16px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 header h1{margin:0;font-size:20px;letter-spacing:.08em}
 header .ver{font-size:12px;border:1px solid #55555f;border-radius:20px;padding:2px 10px;color:#c8c8d0}
-header .conto{margin-left:auto;font-size:14px;display:flex;align-items:center;gap:8px}
-.punto{width:10px;height:10px;border-radius:50%;background:#888}
-.punto.si{background:#5fd07f}.punto.no{background:#ff6b5f}
+header .conto{margin-left:auto;font-size:14px;display:flex;align-items:center;gap:12px}
+.semaforo{display:flex;gap:5px;background:#1d1d22;border:1px solid #33333b;border-radius:20px;padding:5px 8px}
+.semaforo i{width:14px;height:14px;border-radius:50%;background:#3a3a42}
+.semaforo.rosso .r{background:#ff4d40;box-shadow:0 0 8px #ff4d40}
+.semaforo.giallo .g{background:#ffc531;box-shadow:0 0 8px #ffc531}
+.semaforo.verde .v{background:#4ddc6f;box-shadow:0 0 8px #4ddc6f}
+.conto b{display:block;font-size:14px}.conto small{color:#a0a0aa;font-size:12px}
 main{max-width:1180px;margin:0 auto;padding:20px 24px 80px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:18px}
 @media (max-width:900px){main{grid-template-columns:1fr}}
 .carta{background:var(--carta);border:1px solid var(--bordo);border-radius:12px;padding:18px}
@@ -328,7 +350,7 @@ th{font-weight:600;color:var(--tenue);font-size:12px}
 footer{max-width:1180px;margin:0 auto;padding:0 24px 30px;color:var(--tenue);font-size:13px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 </style></head><body>
 <header><h1>SMISTA FOTO</h1><span>Cesena FC</span><span class="ver" id="ver"></span>
-<span class="conto"><span class="punto" id="punto"></span><span id="conto">…</span></span></header>
+<span class="conto" title="Collegamento a MEGA"><span class="semaforo" id="semaforo"><i class="r"></i><i class="g"></i><i class="v"></i></span><span><b id="conto">Controllo MEGA…</b><small id="contoSub"></small></span></span></header>
 <main>
 <div class="col-sx">
  <section class="carta">
@@ -378,7 +400,9 @@ function avvisa(e){alert(e.message||e)}
 async function aggiorna(){
   let s;try{s=await(await fetch("/api/stato?dalla="+righe)).json()}catch(e){$("#fase").textContent="Smista Foto è chiuso. Riaprilo dal suo file di avvio.";return}
   S=s;$("#ver").textContent="versione "+s.versione;
-  $("#punto").className="punto "+(s.account?"si":"no");$("#conto").textContent=s.account?("MEGA: "+s.account):"MEGA non collegato";
+  $("#semaforo").className="semaforo "+s.semaforo;
+  $("#conto").textContent={verde:"MEGA collegato",giallo:"Controllo MEGA…",rosso:"MEGA non collegato"}[s.semaforo];
+  $("#contoSub").textContent=s.account||(s.semaforo=="rosso"?"ricontrollo da solo ogni 15 secondi":"");
   $("#problema").innerHTML=s.problema&&!s.account?`<div class="problema">${esc(s.problema)}<br><button id="bRiprova">Riprova</button></div>`:"";
   if($("#bRiprova"))$("#bRiprova").onclick=()=>api("/api/collega").catch(avvisa);
   $("#nG").textContent=s.persone.giocatori;$("#nS").textContent=s.persone.staff;
