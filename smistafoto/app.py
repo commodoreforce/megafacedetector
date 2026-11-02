@@ -17,7 +17,7 @@ from .flussi import (analizza_cartella, carica_lavoro, confronta, deboli, elenca
 from .mega import collegamento, normalizza
 from .registro import Registro
 from .revisione import pagina_revisione
-from .volti import Riferimenti, Volti
+from .volti import Riferimenti, Volti, nome_modello, scarica_auraface
 
 PORTA = 8765
 
@@ -31,7 +31,8 @@ class App:
             self.cfg = json.load(f)
         self.reg = Registro()
         self.conn = self.volti = None
-        self.rif = Riferimenti(self.dati)
+        self.modello = nome_modello(self.cfg)
+        self.rif = Riferimenti(self.dati, self.modello, 512 if self.modello == "auraface" else 128)
         self.account = None
         self.problema = "Controllo del collegamento in corso…"
         self.attivita = {"tipo": None, "in_corso": False, "lavoro": None, "risultato": None, "errore": None}
@@ -69,6 +70,8 @@ class App:
     def _serve_collegamento(self):
         if not self.account:
             raise RuntimeError(self.problema or "MEGA non è collegato.")
+        if self.volti is None:
+            raise RuntimeError("Il modello di riconoscimento non è pronto: guarda il registro e premi «Riprova».")
 
     def collega(self, silenzioso=False):
         self._ultimo_controllo = time.time()
@@ -94,14 +97,26 @@ class App:
                     self.reg.errore(self.problema)
                     self.reg.info("Risposta di MEGAcmd: " + getattr(self.conn, "risposta_whoami", "?"))
                 return
-            if self.volti is None:
-                self.reg.info("Carico i modelli di riconoscimento dei volti…")
-                self.volti = Volti(os.path.join(self.qui, "modelli"), self.cfg)
             self.account = chi
             self.reg.ok(f"Collegato a MEGA come {chi}.")
+            if self.volti is None:
+                try:
+                    if self.modello == "auraface":
+                        scarica_auraface(os.path.join(self.qui, "modelli"), self.reg)
+                    self.reg.info("Carico il modello di riconoscimento dei volti…")
+                    self.volti = Volti(os.path.join(self.qui, "modelli"), self.cfg)
+                    self.reg.ok(f"Modello di riconoscimento: {self.volti.nome}.")
+                except Exception as e:
+                    self.problema = f"Non riesco a preparare il modello di riconoscimento: {e}"
+                    self.reg.errore(self.problema)
+                    self._ultimo_controllo = time.time() + 10 ** 9  # niente ricontrolli automatici
+                    return
             n = len(self.rif.info)
             if n:
                 self.reg.info(f"Conosco già {n} persone.")
+            elif self.modello != "sface" and os.path.exists(os.path.join(self.dati, "riferimenti.json")):
+                self.reg.avviso(f"Il modello di riconoscimento è cambiato ({self.volti.nome}): i volti vanno "
+                                "imparati di nuovo. Premi «Impara i volti nuovi» (circa 10-20 minuti).")
             else:
                 self.reg.info("Non conosco ancora nessun volto: premi «Impara i volti».")
         self.avvia("collegamento", lavoro)
@@ -236,6 +251,7 @@ class App:
         if a.get("inizio"):
             a["secondi"] = int(time.time() - a["inizio"])
         return {"versione": VERSIONE, "data_versione": DATA_VERSIONE,
+                "modello": self.volti.nome if self.volti else self.modello,
                 "account": self.account, "problema": self.problema, "semaforo": semaforo,
                 "persone": {"giocatori": g, "staff": len(self.rif.info) - g, "deboli": deboli(self.rif)},
                 "elenco": self._lista_persone(), "esclusi": sorted(self.esclusi),
@@ -508,11 +524,11 @@ async function api(url,dati){const r=await fetch(url,{method:"POST",headers:{"Co
 function avvisa(e){alert(e.message||e)}
 async function aggiorna(){
   let s;try{s=await(await fetch("/api/stato?dalla="+righe)).json()}catch(e){$("#fase").textContent="Smista Foto è chiuso. Riaprilo dal suo file di avvio.";return}
-  S=s;$("#ver").textContent="versione "+s.versione;
+  S=s;$("#ver").textContent="versione "+s.versione+" · "+s.modello;
   $("#semaforo").className="semaforo "+s.semaforo;
   $("#conto").textContent={verde:"MEGA collegato",giallo:"Controllo MEGA…",rosso:"MEGA non collegato"}[s.semaforo];
   $("#contoSub").textContent=s.account||(s.semaforo=="rosso"?"ricontrollo da solo ogni 15 secondi":"");
-  $("#problema").innerHTML=s.problema&&!s.account?`<div class="problema">${esc(s.problema)}<br><button id="bRiprova">Riprova</button></div>`:"";
+  $("#problema").innerHTML=s.problema&&(!s.account||s.problema.startsWith("Non riesco a preparare"))?`<div class="problema">${esc(s.problema)}<br><button id="bRiprova">Riprova</button></div>`:"";
   if($("#bRiprova"))$("#bRiprova").onclick=()=>api("/api/collega").catch(avvisa);
   $("#nG").textContent=s.persone.giocatori;$("#nS").textContent=s.persone.staff;
   $("#deboli").innerHTML=s.persone.deboli.length?`<div class="avviso">Riconoscimento debole per: <b>${s.persone.deboli.map(esc).join(", ")}</b>. Apri «Elenco delle persone» qui sotto e premi «Primi piani…» accanto al nome.</div>`:"";
@@ -551,7 +567,12 @@ function mostraElenco(s){
       if(r.ok)ok++;else alert((await r.json()).errore)}
     if(ok&&confirm(`${ok} primi piani aggiunti per ${nome}. Lo reimparo adesso?`))api("/api/impara",{solo:[nome]}).catch(avvisa)});
 }
-function tilesProva(p){return `<div class="tiles"><div><b>${p.precisione}%</b>precisione (giuste sulle proposte)</div><div><b>${p.copertura}%</b>del lavoro a mano trovato da solo</div><div><b>${p.sbagliate}</b>assegnazioni sbagliate</div><div><b>${p.giuste}</b>giuste su ${p.a_mano} fatte a mano</div><div><b>${p.tra_i_dubbi}</b>altre trovate tra i dubbi</div><div><b>${p.mancate}</b>mancate del tutto</div></div>`}
+function taratura(p){if(!p.taratura)return"";
+  return `<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">Taratura: cosa succederebbe con soglie diverse</summary>
+  <p class="nota" style="margin:6px 0">Soglia più alta = meno errori ma meno foto trovate. La riga in grassetto è quella in uso.</p>
+  <table><tr><th>Soglia</th><th>Proposte</th><th>Precisione</th><th>Lavoro trovato</th></tr>`+
+  p.taratura.map(r=>`<tr style="${Math.abs(r.soglia-p.soglia_attuale)<0.001?"font-weight:700":""}"><td>${r.soglia.toFixed(2)}</td><td>${r.proposte}</td><td>${r.precisione}%</td><td>${r.copertura}%</td></tr>`).join("")+"</table></details>"}
+function tilesProva(p){return `<div class="tiles"><div><b>${p.precisione}%</b>precisione (giuste sulle proposte)</div><div><b>${p.copertura}%</b>del lavoro a mano trovato da solo</div><div><b>${p.sbagliate}</b>assegnazioni sbagliate</div><div><b>${p.giuste}</b>giuste su ${p.a_mano} fatte a mano</div><div><b>${p.tra_i_dubbi}</b>altre trovate tra i dubbi</div><div><b>${p.mancate}</b>mancate del tutto</div></div>`+taratura(p)}
 function mostraEsito(a){
   const e=$("#esito");
   if(a.in_corso||!a.tipo){e.innerHTML="";return}

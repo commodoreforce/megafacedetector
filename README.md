@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **1.11** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
+Versione **2.0** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
 
 Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro cartelle:
 
@@ -129,6 +129,18 @@ mancate. Trova da solo la cartella della partita e ignora i volti imparati propr
 quella partita, così la prova è onesta. Il dettaglio per persona è in
 `lavori/<partita>/prova.csv`.
 
+## Il modello di riconoscimento
+
+- **I volti si trovano** con YuNet (OpenCV, licenza Apache 2.0), incluso nel pacchetto.
+- **I volti si riconoscono** con **AuraFace v1** (rete ResNet100 di tipo ArcFace, licenza
+  Apache 2.0, pensata per l'uso commerciale): https://huggingface.co/fal/AuraFace-v1.
+  Si usa solo il file di riconoscimento (`glintr100.onnx`); gli altri file di quel
+  repository non si usano perché la loro licenza non è indicata.
+- Il modello (circa 260 MB) **si scarica da solo al primo avvio** e resta nella cartella
+  `modelli/`. Tutto gira sul computer: le foto non vengono mandate a nessun servizio.
+- Con `"modello": "sface"` in `config.json` si torna al modello precedente, più leggero
+  ma molto meno preciso. Le impronte dei due modelli sono salvate in file separati.
+
 ## 3. Impostazioni (`config.json`)
 
 | Voce | A cosa serve |
@@ -138,8 +150,8 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 | `competizioni` | come si traducono i nomi: `SERIEBKT` → `SERIE BKT`, ecc. |
 | `nome_partita` | maiuscolo e senza risultato (`G10_SUDTIROL_CESENA`) |
 | `prefisso_fotografo` | aggiunge il nome della sottocartella del fotografo al file |
-| `soglia_sicura` | più alta = meno errori ma più foto da verificare |
-| `soglia_dubbia` | sotto questa soglia un volto viene ignorato (avversari, pubblico) |
+| `modello` | `auraface` (predefinito) oppure `sface` |
+| `soglie` | per modello, es. `"soglie": {"auraface": {"soglia_sicura": 0.45}}`. `soglia_sicura`: più alta = meno errori ma più foto da verificare; `soglia_dubbia`: sotto, un volto viene ignorato; `margine`: distacco minimo dal secondo candidato. La tabella «Taratura» della prova dice quale soglia conviene |
 | `modalita` | sempre `megacmd` (`cartella_locale` serve solo per i test) |
 
 ## 4. Privacy
@@ -158,6 +170,7 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 
 ## Versioni
 
+- **2.0** (2 novembre 2026): nuovo modello di riconoscimento AuraFace (molto più preciso con profili, cappellini e foto difficili); taratura delle soglie nella prova. Dopo l'aggiornamento: rilanciare l'installazione e reimparare i volti.
 - **1.11** (2 novembre 2026): il nome nel file è solo un suggerimento tra i volti da verificare, mai un'assegnazione sicura (i fotografi a volte sbagliano).
 - **1.10** (2 novembre 2026): se il fotografo ha scritto il cognome nel nome del file, la foto va a quella persona; corretto il filtro «solo le rosse».
 - **1.9.1** (2 novembre 2026): corretta la pagina di revisione che restava vuota quando c'erano volti da verificare.

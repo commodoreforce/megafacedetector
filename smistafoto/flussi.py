@@ -14,7 +14,7 @@ import numpy as np
 from PIL import Image
 
 from .mega import e_foto
-from .volti import volto_ricorrente
+from .volti import soglie, volto_ricorrente
 
 
 # ---------------------------------------------------------------- persone
@@ -91,7 +91,7 @@ def impara(cfg, conn, volti, rif, cartella_dati, reg, tutti=False, solo=None, es
             fonti_foto.append(remota)
             if conn.temporaneo:
                 os.remove(locale)
-        scelte = [(fonti_foto[i], e) for i, e in volto_ricorrente(per_foto)]
+        scelte = [(fonti_foto[i], e) for i, e in volto_ricorrente(per_foto, soglie(cfg)["ricorrente"])]
         extra = os.path.join(primi_piani, nome)  # primi piani forniti a mano
         if os.path.isdir(extra):
             for f in sorted(os.listdir(extra)):
@@ -223,7 +223,10 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
     reg.info(f"Trovate {len(remote)} foto" + (f" (sottocartelle: {', '.join(sotto)})." if sotto else "."))
     reg.info("Scarico e analizzo una foto alla volta. Le foto restano sul computer solo il tempo dell'analisi.")
 
-    soglia_s, soglia_d, margine = cfg["soglia_sicura"], cfg["soglia_dubbia"], cfg["margine"]
+    sg = soglie(cfg)
+    soglia_s, soglia_d, margine = sg["soglia_sicura"], sg["soglia_dubbia"], sg["margine"]
+    reg.info(f"Riconoscimento con {volti.nome}: sicuro sopra {soglia_s:.2f} (con distacco {margine:.2f} "
+             f"dal secondo), da verificare sopra {soglia_d:.2f}.")
     foto, lista_volti, impronte = [], [], []
     reg.inizia_fase("Riconosco i volti", len(remote))
     illeggibili = nomi_trovati = 0
@@ -255,7 +258,7 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
             mini = f"v{vid}.jpg"
             _salva_ritaglio(img, v["riquadro"], os.path.join(mini_dir, mini), 200)
             voce = {"id": vid, "foto": fid, "mini": mini, "stato": stato, "persona": n1,
-                    "punteggio": round(s1, 3), "larghezza": int(v["riquadro"][2]),
+                    "punteggio": round(s1, 3), "secondo": round(s2, 3), "larghezza": int(v["riquadro"][2]),
                     "relativa": round(v["riquadro"][2] / largo_max, 2),
                     "alternative": [[n, round(s, 3)] for s, n in classifica[1:3] if s >= soglia_d - 0.05]}
             if stato == "sicuro":
@@ -279,7 +282,7 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
             lista_volti.append({"id": vid, "foto": fid, "mini": anteprima, "stato": "dubbio",
                                 "persona": persona, "punteggio": 0.0, "dal_nome": True,
                                 "solo_nome": True, "alternative": []})
-            impronte.append(np.zeros(128, np.float32))
+            impronte.append(np.zeros(volti.dimensione, np.float32))
         if i % 25 == 0:
             reg.info(f"Analizzate {i} foto su {len(remote)}…")
     shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -291,13 +294,14 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
 
     lavoro = {"sorgente": sorgente, "competizione": competizione, "evento": evento,
               "creato": time.strftime("%d/%m/%Y %H:%M"), "prova_su": prova_su,
+              "modello": volti.nome, "margine": margine, "soglia_sicura": soglia_s,
               "persone": {n: i["tipo"] for n, i in sorted(rif.info.items())},
               "cartelle_persone": {n: i["cartella"] for n, i in rif.info.items()},
               "foto": foto, "volti": lista_volti, "copiato": False}
     with open(os.path.join(lavoro_dir, "lavoro.json"), "w", encoding="utf-8") as f:
         json.dump(lavoro, f, ensure_ascii=False)
     np.save(os.path.join(lavoro_dir, "impronte.npy"),
-            np.asarray(impronte, np.float32).reshape(-1, 128))
+            np.asarray(impronte, np.float32).reshape(len(impronte), volti.dimensione))
     sicuri = [v for v in lista_volti if v["stato"] == "sicuro"]
     reg.ok(f"Analisi finita: {len(sicuri)} volti riconosciuti con sicurezza "
            f"({len({v['persona'] for v in sicuri})} persone), "
@@ -519,6 +523,19 @@ def confronta(conn, lavoro_dir, cartella_esistente, reg):
         risultato["sbagliate_sfondo"] = piccoli
         reg.info(f"Delle {len(sbagliate)} assegnazioni che non coincidono, {piccoli} sono volti piccoli "
                  "(meno di metà del volto più grande della foto): probabilmente persone sullo sfondo.")
+    # taratura: con soglie diverse, quante proposte giuste e sbagliate si avrebbero
+    misurabili = [v for v in lavoro["volti"] if "secondo" in v and not v.get("solo_nome")]
+    if misurabili:
+        risultato["taratura"] = []
+        risultato["soglia_attuale"] = lavoro.get("soglia_sicura")
+        margine = lavoro.get("margine", 0.0)
+        for t in [x / 100 for x in range(20, 75, 5)]:
+            prese = {(v["persona"], nomi_foto[v["foto"]]) for v in misurabili
+                     if v["punteggio"] >= t and v["punteggio"] - v["secondo"] >= margine}
+            g = len(prese & vero)
+            risultato["taratura"].append({"soglia": t, "proposte": len(prese), "giuste": g,
+                                          "precisione": round(100 * g / max(1, len(prese))),
+                                          "copertura": round(100 * g / len(vero))})
     for persona in sorted({p for p, _ in vero | sicuri}):
         v = {n for p, n in vero if p == persona}
         s = {n for p, n in sicuri if p == persona}
