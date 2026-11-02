@@ -24,7 +24,7 @@ class Finto:
         self.returncode, self.stdout, self.stderr = rc, out.encode(), err.encode()
 
 
-def finto_run(argomenti, capture_output=True, timeout=None):
+def finto_run(argomenti, capture_output=True, timeout=None, env=None):
     comando = os.path.basename(argomenti[0]).replace(".bat", "").replace("mega-", "")
     eseguiti.append((comando, *argomenti[1:]))
     if comando == "ls":

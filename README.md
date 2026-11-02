@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **1.4** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
+Versione **1.5** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
 
 Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro cartelle:
 
@@ -144,6 +144,7 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 
 ## Versioni
 
+- **1.5** (2 novembre 2026): corretto il collegamento a MEGAcmd sul Mac ("mega-exec: command not found").
 - **1.4** (2 novembre 2026): semaforo del collegamento a MEGA, ricontrollo automatico, riconoscimento più robusto dell'account collegato.
 - **1.3** (2 novembre 2026): l'app si usa dal browser, con pulsanti, barra di avanzamento e registro leggibile; le foto si scaricano e si analizzano una alla volta.
 - **1.2** (2 novembre 2026): la prova pilota esclude da sola la partita di prova; numero di versione nel menu.

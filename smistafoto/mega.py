@@ -112,7 +112,11 @@ class Mega:
             raise OperazioneVietata(f"Opzione non consentita per {comando}: {argomenti}")
         exe = os.path.join(self.cartella, "mega-" + comando + (".bat" if os.name == "nt" else ""))
         try:
-            r = subprocess.run([exe, *argomenti], capture_output=True, timeout=attesa)
+            # i comandi di MEGAcmd chiamano a loro volta mega-exec: la loro cartella
+            # deve essere nel PATH, altrimenti sul Mac rispondono "command not found"
+            ambiente = dict(os.environ)
+            ambiente["PATH"] = self.cartella + os.pathsep + ambiente.get("PATH", "")
+            r = subprocess.run([exe, *argomenti], capture_output=True, timeout=attesa, env=ambiente)
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"MEGA non risponde da {attesa // 60} minuti ({comando}). "
                                "Controlla la connessione e che MEGAcmd sia aperto.")
