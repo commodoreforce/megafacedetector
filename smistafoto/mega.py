@@ -18,6 +18,7 @@ Nessuna funzione del programma cancella, sposta o rinomina file su MEGA.
 
 import os
 import posixpath
+import re
 import shutil
 import subprocess
 import sys
@@ -127,8 +128,13 @@ class Mega:
     # ---------------------------------------------------------------- lettura
 
     def chi_sono(self):
-        rc, out, _ = self._esegui("whoami", attesa=120)
-        return out.strip() if rc == 0 and "@" in out else None
+        """L'email dell'account collegato, o None. La risposta grezza di MEGAcmd
+        resta in self.risposta_whoami, per capire cosa non va."""
+        rc, out, err = self._esegui("whoami", attesa=120)
+        testo = (out + "\n" + err).strip()
+        self.risposta_whoami = f"codice {rc}: {testo[:300]}"
+        email = re.search(r"[\w.+\-]+@[\w\-]+\.[\w.\-]+", testo)
+        return email.group(0) if email and "not logged" not in testo.lower() else None
 
     def elenca_nomi(self, cartella):
         """Nomi contenuti in una cartella (non ricorsivo). Cartella assente = []."""
