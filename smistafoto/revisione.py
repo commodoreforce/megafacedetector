@@ -125,13 +125,14 @@ $("#nDubbi").textContent=dubbi.length;
 if(!dubbi.length)$("#secDubbi").hidden=true;
 for(const v of dubbi){
   const c=document.createElement("div");c.className="carta"+(E?(E[v.id]=="ok"?" okv":" no"):"");
-  c.innerHTML=`<img class="volto" src="${B}/m/${v.mini}" alt=""><div class="info"><div class="foto">${esc(fotoPer[v.foto].relativo)}</div></div>`;
+  c.innerHTML=`<img class="volto" src="${B}/m/${v.mini}" alt=""><div class="info"><div class="foto">${esc(fotoPer[v.foto].relativo)}</div>`+
+    (v.solo_nome?`<div class="foto" style="color:var(--dubbio)">Volto non riconosciuto: il nome viene dal nome del file, controlla</div>`:"")+`</div>`;
   hover(c.querySelector("img"),v.foto);
   const info=c.querySelector(".info");
   const sel=selectPersone("",val=>{sceltaDubbio[v.id]=val;c.classList.toggle("scelto",!!val);aggiorna()});
   for(const [n,s] of [[v.persona,v.punteggio],...v.alternative]){
     const b=document.createElement("button");b.className="prop";b.textContent="È "+n+"?";
-    b.title="somiglianza "+Math.round(s*100)+"%";
+    b.title=v.solo_nome?"suggerito dal nome del file":"somiglianza "+Math.round(s*100)+"%";
     b.onclick=()=>{sel.value=n;sel.onchange()};info.append(b)}
   info.append(sel);$("#dubbi").append(c)}
 if(E){const s=D.volti.filter(v=>v.stato=="sicuro"),no=s.filter(v=>E[v.id]=="no").length;
@@ -156,7 +157,7 @@ for(const p of persone.filter(p=>perPersona[p])){
     e.target.textContent=tutte?"Escludi tutte":"Includi tutte";contaAgg();aggiorna()};
   for(const v of perPersona[p]){
     const m=document.createElement("div");m.className="mini"+(E?" "+E[v.id]:"");
-    m.innerHTML=`<img src="${B}/m/${v.mini}" alt="" loading="lazy">`+(v.dal_nome?`<span class="px">nome file</span>`:v.larghezza?`<span class="px">${v.larghezza}px</span>`:"");
+    m.innerHTML=`<img src="${B}/m/${v.mini}" alt="" loading="lazy">`+(v.larghezza?`<span class="px">${v.larghezza}px</span>`:"");
     if(E)m.title=E[v.id]=="ok"?"c'è anche nello smistamento a mano":"non c'è nello smistamento a mano";
     hover(m,v.foto);
     m.onclick=()=>{escluse.has(v.id)?escluse.delete(v.id):escluse.add(v.id);m.classList.toggle("off");contaAgg();aggiorna()};
