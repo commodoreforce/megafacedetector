@@ -36,7 +36,7 @@ def elenca_persone(cfg, conn):
     return persone
 
 
-def _campione(foto, quante, preferite, escludi=()):
+def _campione(foto, quante, preferite):
     """Sceglie le foto da cui imparare: metà dalle cartelle preferite
     (es. MEDIADAY), il resto distribuito su tutta la stagione."""
     def distribuite(lista, k):
@@ -44,7 +44,6 @@ def _campione(foto, quante, preferite, escludi=()):
             return list(lista)
         passo = len(lista) / k
         return [lista[int(i * passo)] for i in range(k)]
-    foto = [f for f in foto if not any(e.upper() in f.upper() for e in escludi)]
     pref = [f for f in foto if any(p.upper() in f.upper() for p in preferite)]
     altre = [f for f in foto if f not in set(pref)]
     scelte = distribuite(pref, quante // 2)
@@ -68,9 +67,8 @@ def impara(cfg, conn, volti, rif, cartella_dati, tutti=False):
         except RuntimeError as e:
             print("  ", e)
             foto = []
-        campione = _campione(foto, cfg["foto_per_imparare"], cfg["cartelle_preferite_per_imparare"],
-                            cfg.get("escludi_da_imparare", []))
-        per_foto = []
+        campione = _campione(foto, cfg["foto_per_imparare"], cfg["cartelle_preferite_per_imparare"])
+        per_foto, fonti_foto = [], []
         for i, remota in enumerate(campione, 1):
             _barra(i, len(campione), posixpath.basename(remota))
             locale = conn.foto_per_imparare(remota, os.path.join(cartella_tmp, f"{i}{os.path.splitext(remota)[1]}"))
@@ -78,9 +76,10 @@ def impara(cfg, conn, volti, rif, cartella_dati, tutti=False):
                 continue
             trovati, _ = volti.analizza(locale, minimo=24)
             per_foto.append([v["impronta"] for v in trovati[:4]])
+            fonti_foto.append(remota)
             if conn.temporaneo:
                 os.remove(locale)
-        scelte = volto_ricorrente(per_foto)
+        scelte = [(fonti_foto[i], e) for i, e in volto_ricorrente(per_foto)]
         # primi piani forniti a mano: primi_piani/COGNOME/*.jpg
         extra = os.path.join(primi_piani, nome)
         if os.path.isdir(extra):
@@ -88,8 +87,8 @@ def impara(cfg, conn, volti, rif, cartella_dati, tutti=False):
                 if e_foto(f):
                     trovati, _ = volti.analizza(os.path.join(extra, f), minimo=24)
                     if trovati:
-                        scelte.append(trovati[0]["impronta"])
-        rif.imposta(nome, tipo, cartella, scelte)
+                        scelte.append(("primi_piani/" + f, trovati[0]["impronta"]))
+        rif.imposta(nome, tipo, cartella, [e for _, e in scelte], [p for p, _ in scelte])
         rif.salva()
         print(f"  imparato da {len(scelte)} foto")
     shutil.rmtree(cartella_tmp, ignore_errors=True)
@@ -139,6 +138,24 @@ def _nome_destinazione(cfg, relativo):
     if cfg["prefisso_fotografo"] and len(parti) > 1:
         return "_".join(parti[:-1]) + "_" + parti[-1]
     return parti[-1]
+
+
+def trova_cartella_esistente(conn, rif, competizione, evento):
+    """Cerca nelle cartelle dei giocatori la cartella della partita già smistata.
+    Prima il nome esatto, poi una cartella che inizi con lo stesso numero di giornata."""
+    giornata = evento.split("_")[0] + "_"
+    candidati = {}
+    for nome, info in rif.info.items():
+        if info.get("tipo") != "giocatore":
+            continue
+        for c in conn.elenca_nomi(posixpath.join(info["cartella"], competizione)):
+            if c.upper() == evento.upper():
+                return c
+            if c.upper().startswith(giornata.upper()):
+                candidati[c] = candidati.get(c, 0) + 1
+        if len(candidati) == 1 and sum(candidati.values()) >= 3:
+            break
+    return max(candidati, key=candidati.get) if len(candidati) == 1 else None
 
 
 # ---------------------------------------------------------------- analisi
@@ -300,7 +317,8 @@ def esegui_copia(conn, rif, lavoro_dir, decisioni, stato):
     # i volti confermati migliorano i riferimenti per la prossima volta
     for d in decisioni:
         if d.get("volto") is not None:
-            rif.aggiungi_conferma(d["persona"], impronte[int(d["volto"])])
+            rif.aggiungi_conferma(d["persona"], impronte[int(d["volto"])],
+                                  "conferma:" + lavoro["sorgente"])
     rif.salva()
 
     lavoro["copiato"] = True

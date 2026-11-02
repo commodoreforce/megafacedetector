@@ -20,7 +20,6 @@
 
   "foto_per_imparare": 30,
   "cartelle_preferite_per_imparare": ["MEDIADAY"],
-  "escludi_da_imparare": [],
   "lato_lungo_analisi": 2400,
   "volto_minimo_px": 40
 }
