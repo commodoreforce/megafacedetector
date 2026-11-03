@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from . import DATA_VERSIONE, VERSIONE
-from .flussi import (analizza_cartella, carica_lavoro, confronta, deboli, elenca_lavori,
+from .flussi import (analizza_cartella, calibra_insieme, carica_lavoro, confronta, deboli, elenca_lavori,
                      esegui_copia, impara, ricava_evento, simula_copia, trova_cartella_esistente)
 from .mega import collegamento, normalizza
 from .registro import Registro
@@ -217,6 +217,13 @@ class App:
             self.attivita["risultato"] = simula_copia(self.conn, d, decisioni, self.reg)
         self.avvia("simulazione", lavoro)
 
+    def calibra(self):
+        self._serve_collegamento()
+
+        def lavoro():
+            self.attivita["risultato"] = calibra_insieme(self.cfg, self.conn, self.lavori, self.reg)
+        self.avvia("calibra", lavoro)
+
     def applica_regola(self, r):
         if self.attivita["in_corso"]:
             raise RuntimeError("C'è un'attività in corso: aspetta che finisca.")
@@ -373,6 +380,9 @@ def _gestore(app):
                     r = {"ok": True}
                 elif parti == ["api", "impara"]:
                     app.impara(bool(c.get("tutti")), c.get("solo"))
+                    r = {"ok": True}
+                elif parti == ["api", "calibra"]:
+                    app.calibra()
                     r = {"ok": True}
                 elif parti == ["api", "regola"]:
                     app.applica_regola(c)
@@ -595,7 +605,7 @@ let REGOLE=[];
 function regole(p){if(!p.regole||!p.regole.length)return"";REGOLE=p.regole;
   return `<div style="margin-top:12px"><b>Regole proposte</b><p class="nota" style="margin:4px 0 8px">Lo script ha provato molte combinazioni (somiglianza, grandezza del volto, nitidezza) per avvicinarsi al vostro criterio «almeno un po' protagonista». In alto: trova più foto; in basso: sbaglia meno. Scegline una: vale dalla prossima analisi.</p>
   <table><tr><th>Regola</th><th>Proposte</th><th>Precisione</th><th>Lavoro trovato</th><th></th></tr>`+
-  p.regole.map((r,i)=>`<tr style="${r.attuale?"font-weight:700":""}"><td>${esc(r.descrizione)}${r.attuale?" <span class='nota'>(in uso)</span>":""}</td><td>${r.proposte}</td><td>${r.precisione}%</td><td>${r.copertura}%</td><td>${r.attuale?"":`<button data-regola="${i}">Usa questa</button>`}</td></tr>`).join("")+"</table></div>"}
+  p.regole.map((r,i)=>`<tr style="${r.attuale?"font-weight:700":""}"><td>${esc(r.descrizione)}${r.attuale?" <span class='nota'>(in uso)</span>":""}${(r.per_partita||[]).length?`<br><span class="nota">`+r.per_partita.map(x=>`${esc(x.partita)}: ${x.precisione}% · ${x.copertura}%`).join(" — ")+"</span>":""}</td><td>${r.proposte}</td><td>${r.precisione}%</td><td>${r.copertura}%</td><td>${r.attuale?"":`<button data-regola="${i}">Usa questa</button>`}</td></tr>`).join("")+"</table></div>"}
 document.addEventListener("click",e=>{const b=e.target.closest("[data-regola]");if(!b)return;const r=REGOLE[+b.dataset.regola];
   if(confirm("Uso questa regola dalla prossima analisi?\n\n"+r.descrizione))api("/api/regola",r).then(()=>{b.textContent="In uso ✓";b.disabled=true}).catch(avvisa)});
 function taratura(p){if(!p.taratura)return"";
@@ -609,16 +619,23 @@ function mostraEsito(a){
   if(a.in_corso||!a.tipo){e.innerHTML="";return}
   if(a.errore){e.innerHTML=`<div class="problema">Interrotto: ${esc(a.errore)}</div>`;return}
   if(a.tipo=="smista"&&a.lavoro)e.innerHTML=`<div class="riga"><a href="/l/${encodeURIComponent(a.lavoro)}"><button class="primo">Apri la revisione →</button></a></div>`;
+  else if(a.tipo=="calibra"&&a.risultato)e.innerHTML=`<b>Regole calcolate su ${a.risultato.partite.length} partite</b>`+regole(a.risultato)+`<p class="nota">Sotto ogni regola: precisione · lavoro trovato in ciascuna partita. Meglio una regola che va bene su tutte.</p>`;
   else if(a.tipo=="prova"&&a.risultato)e.innerHTML="<b>Risultato della prova</b>"+tilesProva(a.risultato)+`<div class="riga"><a href="/l/${encodeURIComponent(a.lavoro)}"><button class="primo">Vedi i volti: verdi giusti, rossi no →</button></a></div><p class="nota">Dettaglio per persona nel file prova.csv dentro la cartella lavori/${esc(a.lavoro)}.</p>`;
   else e.innerHTML="";
 }
+let chiaveLavori="";
 function mostraLavori(L){
   if(!L.length)return;
+  const k=JSON.stringify([L.map(l=>[l.id,l.copiato,!!l.prova]),S&&S.attivita.in_corso]);if(k===chiaveLavori)return;chiaveLavori=k;
+  const nProve=new Set(L.filter(l=>l.prova).map(l=>l.evento)).size;
   $("#lavori").innerHTML=`<table><tr><th>Partita</th><th>Data</th><th>Foto</th><th></th></tr>`+L.map(l=>{
-    let st;if(l.prova)st=`<a href="/l/${encodeURIComponent(l.id)}"><span class="etich prova">Prova · ${l.prova.precisione}% precisione · vedi i volti →</span></a>`;
+    let st;if(l.prova)st=`<a href="/l/${encodeURIComponent(l.id)}"><span class="etich prova">Prova · ${l.prova.precisione}% · vedi →</span></a>`;
     else if(l.copiato)st=`<span class="etich fatto">Copiata</span>`;
     else st=`<a href="/l/${encodeURIComponent(l.id)}"><span class="etich da">Da rivedere →</span></a>`;
-    return `<tr><td>${esc(l.evento)}<br><span class="nota">${esc(l.competizione)}</span></td><td>${esc(l.creato)}</td><td>${l.foto}</td><td>${st}</td></tr>`}).join("")+"</table>";
+    return `<tr><td>${esc(l.evento)}<br><span class="nota">${esc(l.competizione)}</span></td><td>${esc(l.creato)}</td><td>${l.foto}</td><td>${st}</td></tr>`}).join("")+"</table>"+
+    (nProve>=2?`<div class="riga"><button class="primo" id="bCalibra" ${S&&S.attivita.in_corso?"disabled":""}>Calcola la regola su tutte le prove (${nProve} partite)</button></div>`:
+     `<p class="nota" style="margin-top:10px">Con prove su almeno due partite diverse puoi calcolare una regola valida per tutte.</p>`);
+  if($("#bCalibra"))$("#bCalibra").onclick=()=>api("/api/calibra").catch(avvisa);
 }
 async function apri(percorso){
   $("#sfoglia").hidden=false;$("#cartelle").innerHTML='<div class="vuota">Apro la cartella su MEGA…</div>';$("#sfogliaAz").innerHTML="";
