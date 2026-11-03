@@ -136,11 +136,23 @@ def rapporto_riferimenti(rif, reg):
 
 # ---------------------------------------------------------------- evento
 
+def e_unica(cfg, competizione):
+    """True per le cartelle uniche (es. ALLENAMENTI): niente sottocartella per evento."""
+    return competizione.upper() in {c.upper() for c in cfg.get("cartelle_uniche", [])}
+
+
 def ricava_evento(cfg, sorgente):
     """Da .../MATCH/SERIEBKT/G10_Sudtirol_Cesena_1_1/Foto ricava
-    competizione 'SERIE BKT' ed evento 'G10_SUDTIROL_CESENA'."""
+    competizione 'SERIE BKT' ed evento 'G10_SUDTIROL_CESENA'.
+    Da .../ALLENAMENTI/2026_11_Novembre/20261102 ricava 'ALLENAMENTI' e la data '20261102'
+    (per le cartelle uniche l'evento è la data, messa davanti al nome dei file)."""
     parti = [p for p in sorgente.split("/") if p]
     maiuscole = [p.upper() for p in parti]
+    for unica in cfg.get("cartelle_uniche", []):
+        if unica.upper() in maiuscole:
+            dopo = parti[maiuscole.index(unica.upper()) + 1:]
+            date = [m for p in dopo for m in re.findall(r"(?<!\d)(20\d{6})(?!\d)", p)]
+            return unica.upper(), (date[-1] if date else "")
     if "MATCH" not in maiuscole or maiuscole.index("MATCH") + 2 >= len(parti):
         return "", ""
     i = maiuscole.index("MATCH")
@@ -281,12 +293,18 @@ def _cerca_regole(gruppi, attuale):
 def _vero(conn, lavoro, cartella_esistente):
     """Le assegnazioni (persona, nome file) fatte a mano per questa partita. Su MEGA legge soltanto."""
     insieme_nomi = {posixpath.basename(f["relativo"]) for f in lavoro["foto"]}
+    con_data = {f["nome_dest"]: posixpath.basename(f["relativo"]) for f in lavoro["foto"]}
     vero = set()
     for persona, cartella in lavoro["cartelle_persone"].items():
-        dest = posixpath.join(cartella, lavoro["competizione"], cartella_esistente)
+        if lavoro.get("unica"):  # es. PLAYERS/CIOFI/ALLENAMENTI: tutti i giorni insieme
+            dest = posixpath.join(cartella, lavoro["competizione"])
+        else:
+            dest = posixpath.join(cartella, lavoro["competizione"], cartella_esistente)
         for n in conn.elenca_nomi(dest):
             if n in insieme_nomi:
                 vero.add((persona, n))
+            elif n in con_data:
+                vero.add((persona, con_data[n]))
     return vero
 
 
@@ -321,11 +339,13 @@ def calibra_insieme(cfg, conn, cartella_lavori, reg):
     return {"regole": regole, "partite": [g["nome"] for g in gruppi]}
 
 
-def _nome_destinazione(cfg, relativo):
+def _nome_destinazione(cfg, relativo, prefisso=""):
     parti = relativo.split("/")
     if cfg["prefisso_fotografo"] and len(parti) > 1:
-        return "_".join(parti[:-1]) + "_" + parti[-1]
-    return parti[-1]
+        nome = "_".join(parti[:-1]) + "_" + parti[-1]
+    else:
+        nome = parti[-1]
+    return prefisso + nome
 
 
 def trova_cartella_esistente(conn, rif, competizione, evento):
@@ -353,7 +373,11 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
                       cartella_lavori, reg, prova_su=None):
     if not rif.impronte:
         raise RuntimeError("Prima bisogna imparare i volti.")
-    lavoro_dir = os.path.join(cartella_lavori, f"{evento}_{time.strftime('%Y%m%d-%H%M%S')}")
+    unica = e_unica(cfg, competizione)
+    # nelle cartelle uniche i nomi si ripetono tra giorni diversi: la data va davanti
+    prefisso = f"{evento}_" if unica else ""
+    etichetta = f"{competizione}_{evento}" if unica else evento
+    lavoro_dir = os.path.join(cartella_lavori, f"{etichetta}_{time.strftime('%Y%m%d-%H%M%S')}")
     mini_dir = os.path.join(lavoro_dir, "miniature")
     tmp_dir = os.path.join(lavoro_dir, "tmp")
     os.makedirs(mini_dir, exist_ok=True)
@@ -391,7 +415,7 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
         else:
             illeggibili += 1
         foto.append({"id": fid, "remoto": r, "relativo": rel,
-                     "nome_dest": _nome_destinazione(cfg, rel), "anteprima": anteprima})
+                     "nome_dest": _nome_destinazione(cfg, rel, prefisso), "anteprima": anteprima})
         presenti = {}
         largo_max = trovati[0]["riquadro"][2] if trovati else 1
         for v in trovati:
@@ -443,7 +467,7 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
     if illeggibili:
         reg.avviso(f"{illeggibili} foto non si sono potute aprire (formato non supportato o download fallito).")
 
-    lavoro = {"sorgente": sorgente, "competizione": competizione, "evento": evento,
+    lavoro = {"sorgente": sorgente, "competizione": competizione, "evento": evento, "unica": unica,
               "creato": time.strftime("%d/%m/%Y %H:%M"), "prova_su": prova_su,
               "modello": volti.nome, "margine": margine, "soglia_sicura": soglia_s,
               "protagonista": regola,
@@ -515,10 +539,28 @@ def _piano(lavoro, decisioni):
         if chiave in visti or d["persona"] not in lavoro["cartelle_persone"]:
             continue
         visti.add(chiave)
-        cartella = posixpath.join(lavoro["cartelle_persone"][d["persona"]],
-                                  lavoro["competizione"], lavoro["evento"])
+        cartella = posixpath.join(lavoro["cartelle_persone"][d["persona"]], lavoro["competizione"],
+                                  *([] if lavoro.get("unica") else [lavoro["evento"]]))
         piano.setdefault(cartella, []).append((foto[chiave[0]], d["persona"]))
     return piano
+
+
+def _stessa_foto_gia_presente(conn, lavoro, f, presenti, cache):
+    """Nelle cartelle uniche il nome originale (IMG_5169.jpg) può essere di un altro giorno:
+    la foto è già presente solo se c'è con lo stesso nome E la stessa dimensione."""
+    originale = posixpath.basename(f["relativo"])
+    if not lavoro.get("unica"):
+        return originale in presenti
+    if originale not in presenti:
+        return False
+    cartella_dest = presenti.get("__cartella__")
+    if cartella_dest not in cache:
+        cache[cartella_dest] = conn.dimensioni(cartella_dest)
+    sorgente = posixpath.dirname(f["remoto"])
+    if sorgente not in cache:
+        cache[sorgente] = conn.dimensioni(sorgente)
+    a, b = cache[cartella_dest].get(originale), cache[sorgente].get(originale)
+    return a is not None and a == b
 
 
 def simula_copia(conn, lavoro_dir, decisioni, reg):
@@ -529,18 +571,19 @@ def simula_copia(conn, lavoro_dir, decisioni, reg):
     totale = sum(len(v) for v in piano.values())
     reg.info(f"SIMULAZIONE (non scrive niente su MEGA): controllo {totale} copie in {len(piano)} cartelle…")
     reg.inizia_fase("Simulazione della copia", totale)
-    persone, righe, fatte = [], [], 0
+    persone, righe, fatte, cache = [], [], 0, {}
     for cartella, elementi in sorted(piano.items()):
         persona = elementi[0][1]
         nuova = not conn.esiste(cartella)
-        presenti = set() if nuova else set(conn.elenca_nomi(cartella))
+        presenti = {} if nuova else dict.fromkeys(conn.elenca_nomi(cartella))
+        presenti["__cartella__"] = cartella
         conta = {"copierebbe": 0, "salterebbe": 0, "bloccata": 0}
         for f, p in elementi:
             originale = posixpath.basename(f["relativo"])
             dest = posixpath.join(cartella, f["nome_dest"])
             try:
                 conn.verifica_copia(f["remoto"], dest)
-                if f["nome_dest"] in presenti or originale in presenti:
+                if f["nome_dest"] in presenti or _stessa_foto_gia_presente(conn, lavoro, f, presenti, cache):
                     esito, chiave = "già presente: verrebbe saltata", "salterebbe"
                 else:
                     esito, chiave = "verrebbe copiata", "copierebbe"
@@ -581,14 +624,16 @@ def esegui_copia(conn, rif, lavoro_dir, decisioni, reg):
     reg.info(f"Copio {totale} foto nelle cartelle di {len(piano)} persone, "
              f"sottocartella {lavoro['competizione']}/{lavoro['evento']}.")
     reg.inizia_fase("Copio le foto su MEGA", totale)
+    cache = {}
     fatte = copiate = gia = 0
     errori, registro = [], []
     for cartella, elementi in piano.items():
         persona = elementi[0][1]
         try:
-            presenti = set(conn.elenca_nomi(cartella))
+            presenti = dict.fromkeys(conn.elenca_nomi(cartella))
             if not presenti:
                 conn.crea_cartella(cartella)
+            presenti["__cartella__"] = cartella
         except Exception as e:  # cartella non consentita o MEGA irraggiungibile: salta il gruppo
             reg.errore(f"{persona}: non posso usare la cartella ({e}). Salto le sue foto.")
             for f, p in elementi:
@@ -600,7 +645,10 @@ def esegui_copia(conn, rif, lavoro_dir, decisioni, reg):
         for f, p in elementi:
             originale = posixpath.basename(f["relativo"])
             dest = posixpath.join(cartella, f["nome_dest"])
-            if f["nome_dest"] in presenti or originale in presenti or conn.esiste(dest):
+            # nelle cartelle uniche lo stesso nome originale può essere di un altro giorno:
+            # lì conta solo il nome con la data
+            gia = f["nome_dest"] in presenti or _stessa_foto_gia_presente(conn, lavoro, f, presenti, cache)
+            if gia or conn.esiste(dest):
                 esito = "già presente"
                 gia += 1
             else:

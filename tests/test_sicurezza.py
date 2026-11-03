@@ -35,7 +35,7 @@ def finto_run(argomenti, capture_output=True, timeout=None, env=None):
 
 subprocess.run = finto_run
 Mega._trova_megacmd = staticmethod(lambda: "/finto")
-m = Mega("/2026-27/PLAYERS")
+m = Mega("/2026-27/PLAYERS", ["ALLENAMENTI"])
 
 errori = 0
 
@@ -98,6 +98,21 @@ deve_rifiutare("creare cartella fuori da PLAYERS", lambda: m.crea_cartella("/202
 deve_rifiutare("creare cartella troppo in alto", lambda: m.crea_cartella("/2026-27/PLAYERS/CIOFI"))
 deve_rifiutare("radice di scrittura troppo generica", lambda: Mega("/"))
 deve_rifiutare("radice di scrittura troppo generica 2", lambda: Mega("/2026-27"))
+
+# 3b. cartelle uniche (ALLENAMENTI): solo file direttamente lì, mai altrove allo stesso livello
+deve_passare("copia in PLAYERS/CIOFI/ALLENAMENTI (cartella unica)", lambda: m.copia(SRC, "/2026-27/PLAYERS/CIOFI/ALLENAMENTI/20261102_a.jpg"))
+deve_passare("crea PLAYERS/CIOFI/ALLENAMENTI", lambda: m.crea_cartella("/2026-27/PLAYERS/CIOFI/ALLENAMENTI"))
+deve_passare("copia in PLAYERS/_STAFF/DIAMANTI/ALLENAMENTI", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/DIAMANTI/ALLENAMENTI/x.jpg"))
+deve_rifiutare("copia in PLAYERS/CIOFI/SERIE BKT senza evento", lambda: m.copia(SRC, "/2026-27/PLAYERS/CIOFI/SERIE BKT/a.jpg"))
+deve_rifiutare("copia in PLAYERS/CIOFI/MEDIADAY (non è cartella unica)", lambda: m.copia(SRC, "/2026-27/PLAYERS/CIOFI/MEDIADAY/a.jpg"))
+deve_rifiutare("creare PLAYERS/CIOFI/MEDIADAY", lambda: m.crea_cartella("/2026-27/PLAYERS/CIOFI/MEDIADAY"))
+deve_rifiutare("copia in PLAYERS/ALLENAMENTI/a.jpg", lambda: m.copia(SRC, "/2026-27/PLAYERS/ALLENAMENTI/a.jpg"))
+deve_rifiutare("copia nella sorgente ALLENAMENTI", lambda: m.copia(SRC, "/2026-27/ALLENAMENTI/2026_11/a.jpg"))
+deve_rifiutare("PLAYERS/_STAFF/ALLENAMENTI/x.jpg", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/ALLENAMENTI/x.jpg"))
+deve_rifiutare("staff senza evento: _STAFF/DIAMANTI/SERIE BKT/a.jpg", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/DIAMANTI/SERIE BKT/a.jpg"))
+deve_rifiutare("sottocartella dentro ALLENAMENTI", lambda: m.copia(SRC, "/2026-27/PLAYERS/CIOFI/ALLENAMENTI/X/a.jpg"))
+deve_passare("staff con evento", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/DIAMANTI/SERIE BKT/G10/a.jpg"))
+deve_rifiutare("senza cartelle uniche configurate", lambda: Mega("/2026-27/PLAYERS").copia(SRC, "/2026-27/PLAYERS/CIOFI/ALLENAMENTI/a.jpg"))
 
 # 4. mai sovrascrivere
 risposta_ls[DEST] = (0, "a.jpg\n", "")

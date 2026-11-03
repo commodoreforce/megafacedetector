@@ -6,6 +6,8 @@
   "cartella_giocatori": "/2026-27/PLAYERS",
   "cartella_staff": "/2026-27/PLAYERS/_STAFF",
   "cartella_partite": "/2026-27/MATCH",
+  "cartella_allenamenti": "/2026-27/ALLENAMENTI",
+  "cartelle_uniche": ["ALLENAMENTI"],
 
   "competizioni": {
     "SERIEBKT": "SERIE BKT",

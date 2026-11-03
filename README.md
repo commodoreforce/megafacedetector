@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **2.2** · 3 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
+Versione **2.3** · 3 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
 
 Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro cartelle:
 
@@ -26,8 +26,9 @@ rigide scritte nel codice (`smistafoto/mega.py`), controllate prima di ogni coma
   funzione che lo faccia.
 - **Non sovrascrive mai**: prima di ogni copia verifica che il file non esista già.
   Se esiste, o se la verifica non riesce, la copia non si fa.
-- **Scrive solo dentro `PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>/`.** Le cartelle `MATCH`
-  vengono solo lette.
+- **Scrive solo dentro `PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>/`**, oppure direttamente in
+  `PLAYERS/<NOME>/ALLENAMENTI/` (le «cartelle uniche» elencate in `config.json`, senza
+  sottocartelle). Le cartelle `MATCH` e `ALLENAMENTI` dei fotografi vengono solo lette.
 - Percorsi con `..` o caratteri jolly (`*`, `?`) sono rifiutati.
 
 Il file `tests/test_sicurezza.py` prova tutte queste regole senza toccare MEGA:
@@ -128,6 +129,23 @@ da solo per copiare, perché a volte è sbagliato.
 
 Ogni volto confermato in revisione migliora il riconoscimento per la volta dopo.
 
+### Allenamenti
+
+I fotografi caricano in `2026-27 / ALLENAMENTI / <mese> / <giorno>` (es. `2026_11_Novembre / 20261102`).
+Con **«Sfoglia»** si apre `ALLENAMENTI`, poi il mese, poi il giorno, e si preme **«Usa questa cartella»**.
+
+A differenza delle partite, le foto vanno tutte in **una cartella unica per persona**:
+`PLAYERS / CIOFI / ALLENAMENTI`, senza sottocartella per data. Poiché in quella cartella si
+accumulano mesi di allenamenti e nomi come `IMG_5169.jpg` si ripetono, lo script mette **la data
+davanti al nome**: `20261102_IMG_5169.jpg` (o `20261102_Rossi_IMG_5169.jpg` se la foto era nella
+sottocartella di un fotografo). Una foto già smistata a mano con il nome originale viene
+riconosciuta (stesso nome **e** stessa dimensione) e saltata; una foto omonima di un altro giorno
+non viene mai toccata.
+
+Le cartelle uniche sono elencate in `config.json` → `cartelle_uniche` (oggi solo `ALLENAMENTI`).
+Solo per queste lo script può scrivere direttamente in `PLAYERS/<NOME>/<CARTELLA>/`, senza
+sottocartelle.
+
 ### Prova pilota
 
 Dopo «Controlla», apri **«Prova su una partita già smistata a mano»** e premi
@@ -153,7 +171,8 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 
 | Voce | A cosa serve |
 |---|---|
-| `cartella_partite` | da dove parte «Sfoglia» (es. `/2026-27/MATCH`) |
+| `cartella_partite`, `cartella_allenamenti` | dove caricano i fotografi (informativo: «Sfoglia» parte dalla stagione) |
+| `cartelle_uniche` | cartelle senza sottocartella per evento, es. `["ALLENAMENTI"]` |
 | `cartella_giocatori`, `cartella_staff` | dove sono le cartelle personali (cambiare a ogni stagione) |
 | `competizioni` | come si traducono i nomi: `SERIEBKT` → `SERIE BKT`, ecc. |
 | `nome_partita` | maiuscolo e senza risultato (`G10_SUDTIROL_CESENA`) |
@@ -179,6 +198,7 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 
 ## Versioni
 
+- **2.3** (3 novembre 2026): smistamento degli allenamenti nella cartella unica PLAYERS/<NOME>/ALLENAMENTI, con la data davanti al nome dei file; «Sfoglia» parte dalla stagione.
 - **2.2** (3 novembre 2026): «Calcola la regola su tutte le prove»: la regola del protagonista si sceglie su più partite insieme, con i numeri di ciascuna.
 - **2.1** (3 novembre 2026): regola del «protagonista» (grandezza e nitidezza del volto): le comparse non vengono smistate; la prova propone le regole migliori e si applicano con un clic.
 - **2.0** (2 novembre 2026): nuovo modello di riconoscimento AuraFace (molto più preciso con profili, cappellini e foto difficili); taratura delle soglie nella prova. Dopo l'aggiornamento: rilanciare l'installazione e reimparare i volti.
