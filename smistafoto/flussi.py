@@ -14,7 +14,7 @@ import numpy as np
 from PIL import Image
 
 from .mega import e_foto
-from .volti import soglie, volto_ricorrente
+from .volti import e_protagonista, protagonista, soglie, volto_ricorrente
 
 
 # ---------------------------------------------------------------- persone
@@ -176,6 +176,66 @@ def nomi_nel_file(nome_file, persone):
     return trovati
 
 
+def descrivi_regola(r, soglia=None):
+    parti = []
+    if soglia is not None:
+        parti.append(f"somiglianza ≥ {soglia:.2f}")
+    if r.get("relativa_min"):
+        parti.append(f"volto ≥ {round(100 * r['relativa_min'])}% del più grande della foto")
+    if r.get("frazione_min"):
+        parti.append(f"volto largo ≥ {100 * r['frazione_min']:.1f}% della foto")
+    if r.get("nitidezza_min"):
+        parti.append(f"nitidezza ≥ {round(r['nitidezza_min'])}")
+    return " · ".join(parti) if parti else "qualsiasi volto riconosciuto"
+
+
+def _cerca_regole(volti_misurabili, nomi_foto, vero, margine, attuale):
+    """Prova molte combinazioni di soglia e regola del protagonista e tiene le migliori:
+    per ogni livello di 'lavoro trovato' quella con la precisione più alta."""
+    vv = [v for v in volti_misurabili if "frazione" in v]
+    if not vv or not vero:
+        return []
+    nit = sorted(v["nitidezza"] for v in vv)
+    quantili = sorted({0.0} | {round(nit[int(len(nit) * q)], 1) for q in (0.2, 0.4, 0.6)})
+    dati = [((v["persona"], nomi_foto[v["foto"]]), v["punteggio"], v["punteggio"] - v["secondo"],
+             v["relativa"], v["frazione"], v["nitidezza"]) for v in vv]
+    prove = []
+    for t in [x / 100 for x in range(30, 65, 5)]:
+        for rel in (0.0, 0.4, 0.6, 0.75, 0.9):
+            for fr in (0.0, 0.015, 0.025, 0.04, 0.06):
+                for n in quantili:
+                    prese = {k for k, p, d, r, f, ni in dati
+                             if p >= t and d >= margine and r >= rel and f >= fr and ni >= n}
+                    if not prese:
+                        continue
+                    g = len(prese & vero)
+                    prove.append({"soglia": t, "relativa_min": rel, "frazione_min": fr, "nitidezza_min": n,
+                                  "proposte": len(prese), "giuste": g,
+                                  "precisione": round(100 * g / len(prese)),
+                                  "copertura": round(100 * g / len(vero))})
+    scelte, viste = [], set()
+    for livello in (85, 75, 65, 55, 45, 35, 25):
+        adatte = [p for p in prove if p["copertura"] >= livello]
+        if not adatte:
+            continue
+        migliore = max(adatte, key=lambda p: (p["precisione"], p["copertura"]))
+        chiave = (migliore["soglia"], migliore["relativa_min"], migliore["frazione_min"], migliore["nitidezza_min"])
+        if chiave not in viste:
+            viste.add(chiave)
+            scelte.append(migliore)
+    if attuale:
+        a = [p for p in prove if abs(p["soglia"] - attuale["soglia"]) < 1e-6
+             and p["relativa_min"] == attuale["relativa_min"] and p["frazione_min"] == attuale["frazione_min"]
+             and p["nitidezza_min"] == attuale["nitidezza_min"]]
+        if a:
+            a[0]["attuale"] = True
+            if (a[0]["soglia"], a[0]["relativa_min"], a[0]["frazione_min"], a[0]["nitidezza_min"]) not in viste:
+                scelte.insert(0, a[0])
+    for p in scelte:
+        p["descrizione"] = descrivi_regola(p, p["soglia"])
+    return scelte
+
+
 def _nome_destinazione(cfg, relativo):
     parti = relativo.split("/")
     if cfg["prefisso_fotografo"] and len(parti) > 1:
@@ -227,6 +287,8 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
     soglia_s, soglia_d, margine = sg["soglia_sicura"], sg["soglia_dubbia"], sg["margine"]
     reg.info(f"Riconoscimento con {volti.nome}: sicuro sopra {soglia_s:.2f} (con distacco {margine:.2f} "
              f"dal secondo), da verificare sopra {soglia_d:.2f}.")
+    regola = protagonista(cfg)
+    reg.info("Protagonista se: " + descrivi_regola(regola) + ".")
     foto, lista_volti, impronte = [], [], []
     reg.inizia_fase("Riconosco i volti", len(remote))
     illeggibili = nomi_trovati = 0
@@ -254,12 +316,16 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
             s1, n1 = classifica[0]
             s2 = classifica[1][0] if len(classifica) > 1 else 0.0
             stato = "sicuro" if s1 >= soglia_s and s1 - s2 >= margine else "dubbio"
+            relativa = v["riquadro"][2] / largo_max
+            if not e_protagonista(regola, relativa, v["frazione"], v["nitidezza"]):
+                stato = "comparsa"  # riconosciuto, ma non protagonista: non si smista
             vid = len(lista_volti)
             mini = f"v{vid}.jpg"
             _salva_ritaglio(img, v["riquadro"], os.path.join(mini_dir, mini), 200)
             voce = {"id": vid, "foto": fid, "mini": mini, "stato": stato, "persona": n1,
                     "punteggio": round(s1, 3), "secondo": round(s2, 3), "larghezza": int(v["riquadro"][2]),
-                    "relativa": round(v["riquadro"][2] / largo_max, 2),
+                    "relativa": round(relativa, 3), "frazione": round(v["frazione"], 4),
+                    "nitidezza": round(v["nitidezza"], 1),
                     "alternative": [[n, round(s, 3)] for s, n in classifica[1:3] if s >= soglia_d - 0.05]}
             if stato == "sicuro":
                 if n1 in presenti:  # la stessa persona due volte nella stessa foto
@@ -295,6 +361,7 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
     lavoro = {"sorgente": sorgente, "competizione": competizione, "evento": evento,
               "creato": time.strftime("%d/%m/%Y %H:%M"), "prova_su": prova_su,
               "modello": volti.nome, "margine": margine, "soglia_sicura": soglia_s,
+              "protagonista": regola,
               "persone": {n: i["tipo"] for n, i in sorted(rif.info.items())},
               "cartelle_persone": {n: i["cartella"] for n, i in rif.info.items()},
               "foto": foto, "volti": lista_volti, "copiato": False}
@@ -303,9 +370,11 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
     np.save(os.path.join(lavoro_dir, "impronte.npy"),
             np.asarray(impronte, np.float32).reshape(len(impronte), volti.dimensione))
     sicuri = [v for v in lista_volti if v["stato"] == "sicuro"]
+    comparse = sum(v["stato"] == "comparsa" for v in lista_volti)
     reg.ok(f"Analisi finita: {len(sicuri)} volti riconosciuti con sicurezza "
            f"({len({v['persona'] for v in sicuri})} persone), "
-           f"{len(lista_volti) - len(sicuri)} da verificare.")
+           f"{len(lista_volti) - len(sicuri) - comparse} da verificare, "
+           f"{comparse} comparse (riconosciute ma non protagoniste: non si smistano).")
     return lavoro_dir
 
 
@@ -500,6 +569,7 @@ def confronta(conn, lavoro_dir, cartella_esistente, reg):
                 vero.add((persona, n))
     sicuri = {(v["persona"], nomi_foto[v["foto"]]) for v in lavoro["volti"] if v["stato"] == "sicuro"}
     dubbi = {(v["persona"], nomi_foto[v["foto"]]) for v in lavoro["volti"] if v["stato"] == "dubbio"} - sicuri
+    comparse = {(v["persona"], nomi_foto[v["foto"]]) for v in lavoro["volti"] if v["stato"] == "comparsa"}
     if not vero:
         reg.errore("Non trovo foto di questa partita nelle cartelle delle persone: "
                    "controlla il nome della cartella già smistata.")
@@ -510,7 +580,8 @@ def confronta(conn, lavoro_dir, cartella_esistente, reg):
         "sbagliate": len(sicuri - vero),
         "precisione": round(100 * len(giuste) / max(1, len(sicuri))),
         "copertura": round(100 * len(giuste) / len(vero)),
-        "tra_i_dubbi": len(dubbi & vero), "mancate": len(vero - sicuri - dubbi),
+        "tra_i_dubbi": len(dubbi & vero), "mancate": len(vero - sicuri - dubbi - comparse),
+        "tra_le_comparse": len((comparse - sicuri - dubbi) & vero),
         "per_persona": [],
         # per ogni volto: "ok" se la stessa assegnazione c'è anche nello smistamento a mano
         "esiti": {str(v["id"]): ("ok" if (v["persona"], nomi_foto[v["foto"]]) in vero else "no")
@@ -526,6 +597,15 @@ def confronta(conn, lavoro_dir, cartella_esistente, reg):
     # taratura: con soglie diverse, quante proposte giuste e sbagliate si avrebbero
     misurabili = [v for v in lavoro["volti"] if "secondo" in v and not v.get("solo_nome")]
     if misurabili:
+        regola = lavoro.get("protagonista") or {}
+        risultato["regole"] = _cerca_regole(
+            misurabili, nomi_foto, vero, lavoro.get("margine", 0.0),
+            {"soglia": lavoro.get("soglia_sicura", 0), "relativa_min": regola.get("relativa_min", 0.0),
+             "frazione_min": regola.get("frazione_min", 0.0), "nitidezza_min": regola.get("nitidezza_min", 0.0)})
+        if risultato["regole"]:
+            m = max(risultato["regole"], key=lambda p: p["precisione"] + p["copertura"] / 2)
+            reg.info(f"Regola consigliata: {m['descrizione']} → precisione {m['precisione']}%, "
+                     f"lavoro trovato {m['copertura']}%.")
         risultato["taratura"] = []
         risultato["soglia_attuale"] = lavoro.get("soglia_sicura")
         margine = lavoro.get("margine", 0.0)
