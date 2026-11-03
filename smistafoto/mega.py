@@ -7,6 +7,8 @@ SICUREZZA DEL CLOUD — regole rigide, verificate prima di ogni comando:
      transfers, ...) viene rifiutato dal programma prima di partire.
   2. Si scrive SOLO dentro la cartella dei giocatori (es. /2026-27/PLAYERS),
      e solo in sottocartelle di evento: PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>/.
+     Unica eccezione: le "cartelle uniche" elencate in config.json (es. ALLENAMENTI),
+     dove i file vanno direttamente in PLAYERS/<NOME>/ALLENAMENTI/.
   3. Una copia non sovrascrive MAI: prima si verifica su MEGA che il file di
      destinazione non esista; se esiste, o se la verifica non è possibile,
      la copia non si fa.
@@ -63,6 +65,24 @@ def _pulito(percorso):
     return "/" + "/".join(parti)
 
 
+def _scrittura_consentita(percorso, radice, cartelle_uniche, e_file):
+    """Regola unica per Mega e CartellaLocale. File: PLAYERS/<NOME>/<COMP>/<EVENTO>/<file>
+    oppure PLAYERS/<NOME>/<UNICA>/<file>. Cartelle: PLAYERS/<NOME>/<COMP>/<EVENTO>
+    oppure PLAYERS/<NOME>/<UNICA>."""
+    if _livelli_sotto(percorso, radice) is None:
+        return False
+    parti = _pulito(percorso).split("/")[1:][len(_pulito(radice).split("/")[1:]):]
+    if parti[0].startswith("_"):  # gruppi come _STAFF: la persona è un livello più in basso
+        parti = parti[1:]
+    # parti = [NOME, COMPETIZIONE, EVENTO, file] oppure [NOME, UNICA, file]
+    minimo = 4 if e_file else 3
+    if len(parti) < 2:
+        return False
+    if parti[1].upper() in cartelle_uniche:
+        return len(parti) == minimo - 1  # niente sottocartelle dentro una cartella unica
+    return len(parti) >= minimo
+
+
 def _livelli_sotto(percorso, radice):
     """Quanti livelli sta 'percorso' sotto 'radice' (None se non ci sta dentro)."""
     p, r = _pulito(percorso).split("/")[1:], _pulito(radice).split("/")[1:]
@@ -76,9 +96,10 @@ class Mega:
 
     temporaneo = True  # i file scaricati sul computer si cancellano dopo l'uso
 
-    def __init__(self, radice_scrittura):
+    def __init__(self, radice_scrittura, cartelle_uniche=()):
         # tutte le scritture devono stare sotto questa cartella (PLAYERS)
         self.radice_scrittura = _pulito(radice_scrittura)
+        self.cartelle_uniche = {c.upper() for c in cartelle_uniche if c and "/" not in c}
         if self.radice_scrittura.count("/") < 2:
             raise OperazioneVietata("La cartella dei giocatori in config.json è troppo generica.")
         self.cartella = self._trova_megacmd()
@@ -123,12 +144,13 @@ class Mega:
                                "Controlla la connessione e che MEGAcmd sia aperto.")
         return r.returncode, _decodifica(r.stdout), _decodifica(r.stderr)
 
-    def _controlla_scrittura(self, percorso, livelli_minimi):
-        n = _livelli_sotto(percorso, self.radice_scrittura)
-        if n is None or n < livelli_minimi:
+    def _controlla_scrittura(self, percorso, e_file):
+        if not _scrittura_consentita(percorso, self.radice_scrittura, self.cartelle_uniche, e_file):
             raise OperazioneVietata(
                 f"Scrittura fuori dalle cartelle consentite: {percorso} "
-                f"(consentito solo dentro {self.radice_scrittura}/<NOME>/<COMPETIZIONE>/<EVENTO>)")
+                f"(consentito solo dentro {self.radice_scrittura}/<NOME>/<COMPETIZIONE>/<EVENTO>"
+                + (" o " + ", ".join(f"<NOME>/{c}" for c in sorted(self.cartelle_uniche)) if self.cartelle_uniche else "")
+                + ")")
 
     # ---------------------------------------------------------------- lettura
 
@@ -150,21 +172,30 @@ class Mega:
         return [r.strip() for r in out.splitlines()
                 if r.strip() and not (r.strip().endswith(":") and "/" in r)]
 
-    def elenca_cartelle(self, cartella):
-        """Per sfogliare: (sottocartelle, numero di foto) di una cartella. Solo lettura."""
+    def _elenco_dettagliato(self, cartella):
+        """[(è_cartella, nome, dimensione in byte o None)] di una cartella. Solo lettura."""
         rc, out, err = self._esegui("ls", "-l", _pulito(cartella), attesa=120)
         if rc != 0:
             raise RuntimeError(f"Non riesco ad aprire {cartella}: {(err or out).strip()[:200]}")
-        cartelle, foto = [], 0
+        voci = []
         for riga in out.splitlines():
-            m = re.match(r"^(\S{4})\s+\S+\s+\S+\s+\d{2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\s+(.+)$", riga.strip())
-            if not m:
-                continue
-            if m.group(1).startswith("d"):
-                cartelle.append(m.group(2))
-            elif e_foto(m.group(2)):
-                foto += 1
-        return cartelle, foto
+            m = re.match(r"^(\S{4})\s+\S+\s+(\S+)\s+\d{2}\w{3}\d{4} \d{2}:\d{2}:\d{2}\s+(.+)$", riga.strip())
+            if m:
+                voci.append((m.group(1).startswith("d"), m.group(3),
+                             int(m.group(2)) if m.group(2).isdigit() else None))
+        return voci
+
+    def elenca_cartelle(self, cartella):
+        """Per sfogliare: (sottocartelle, numero di foto) di una cartella. Solo lettura."""
+        voci = self._elenco_dettagliato(cartella)
+        return [n for d, n, _ in voci if d], sum(1 for d, n, _ in voci if not d and e_foto(n))
+
+    def dimensioni(self, cartella):
+        """{nome file: byte} di una cartella; vuoto se la cartella non esiste. Solo lettura."""
+        try:
+            return {n: s for d, n, s in self._elenco_dettagliato(cartella) if not d and s is not None}
+        except RuntimeError:
+            return {}
 
     def esiste(self, percorso):
         """True se il percorso esiste su MEGA. In caso di dubbio risponde True,
@@ -219,15 +250,13 @@ class Mega:
     # ---------------------------------------- scrittura (solo creazione di cose nuove)
 
     def crea_cartella(self, cartella):
-        # PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>  -> almeno 3 livelli sotto PLAYERS
-        self._controlla_scrittura(cartella, 3)
+        self._controlla_scrittura(cartella, e_file=False)
         self._esegui("mkdir", "-p", _pulito(cartella))
 
     def verifica_copia(self, origine, destinazione):
         """Le stesse regole della copia, senza copiare: usata anche dalla simulazione."""
         origine, destinazione = _pulito(origine), _pulito(destinazione)
-        # PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>/<file> -> almeno 4 livelli
-        self._controlla_scrittura(destinazione, 4)
+        self._controlla_scrittura(destinazione, e_file=True)
         if _livelli_sotto(origine, self.radice_scrittura) is not None:
             raise OperazioneVietata("Le foto di origine non possono stare dentro PLAYERS.")
         if not e_foto(destinazione):
@@ -250,11 +279,12 @@ class CartellaLocale:
 
     temporaneo = False  # i file sono gli originali: non si cancellano mai
 
-    def __init__(self, radice, radice_scrittura):
+    def __init__(self, radice, radice_scrittura, cartelle_uniche=()):
         if not os.path.isdir(radice):
             raise RuntimeError(f"La cartella {radice} non esiste.")
         self.radice = radice
         self.radice_scrittura = _pulito(radice_scrittura)
+        self.cartelle_uniche = {c.upper() for c in cartelle_uniche if c and "/" not in c}
 
     def _vero(self, remoto):
         return os.path.join(self.radice, *_pulito(remoto).split("/")[1:])
@@ -268,6 +298,13 @@ class CartellaLocale:
 
     def esiste(self, percorso):
         return os.path.exists(self._vero(percorso))
+
+    def dimensioni(self, cartella):
+        v = self._vero(cartella)
+        if not os.path.isdir(v):
+            return {}
+        return {n: os.path.getsize(os.path.join(v, n)) for n in os.listdir(v)
+                if os.path.isfile(os.path.join(v, n))}
 
     def elenca_cartelle(self, cartella):
         v = self._vero(cartella)
@@ -296,14 +333,12 @@ class CartellaLocale:
         return self._vero(remota)
 
     def crea_cartella(self, cartella):
-        n = _livelli_sotto(cartella, self.radice_scrittura)
-        if n is None or n < 3:
+        if not _scrittura_consentita(cartella, self.radice_scrittura, self.cartelle_uniche, False):
             raise OperazioneVietata(f"Scrittura fuori dalle cartelle consentite: {cartella}")
         os.makedirs(self._vero(cartella), exist_ok=True)
 
     def verifica_copia(self, origine, destinazione):
-        n = _livelli_sotto(destinazione, self.radice_scrittura)
-        if n is None or n < 4:
+        if not _scrittura_consentita(destinazione, self.radice_scrittura, self.cartelle_uniche, True):
             raise OperazioneVietata(f"Scrittura fuori dalle cartelle consentite: {destinazione}")
         if _livelli_sotto(origine, self.radice_scrittura) is not None:
             raise OperazioneVietata("Le foto di origine non possono stare dentro PLAYERS.")
@@ -319,5 +354,5 @@ class CartellaLocale:
 
 def collegamento(cfg):
     if cfg.get("modalita") == "cartella_locale":
-        return CartellaLocale(cfg["radice_locale"], cfg["cartella_giocatori"])
-    return Mega(cfg["cartella_giocatori"])
+        return CartellaLocale(cfg["radice_locale"], cfg["cartella_giocatori"], cfg.get("cartelle_uniche", []))
+    return Mega(cfg["cartella_giocatori"], cfg.get("cartelle_uniche", []))

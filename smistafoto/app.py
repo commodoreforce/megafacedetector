@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from . import DATA_VERSIONE, VERSIONE
-from .flussi import (analizza_cartella, calibra_insieme, carica_lavoro, confronta, deboli, elenca_lavori,
+from .flussi import (e_unica, analizza_cartella, calibra_insieme, carica_lavoro, confronta, deboli, elenca_lavori,
                      esegui_copia, impara, ricava_evento, simula_copia, trova_cartella_esistente)
 from .mega import collegamento, normalizza
 from .registro import Registro
@@ -171,23 +171,41 @@ class App:
         sorgente = normalizza(percorso)
         if sorgente == "/":
             raise RuntimeError("Scrivi il percorso della cartella delle foto.")
+        if (sorgente + "/").upper().startswith(self.cfg["cartella_giocatori"].rstrip("/").upper() + "/"):
+            raise RuntimeError("Questa è una cartella dei giocatori: scegli la cartella dove caricano i fotografi.")
         comp, evento = ricava_evento(self.cfg, sorgente)
-        esistente = trova_cartella_esistente(self.conn, self.rif, comp, evento) if prova and comp else ""
-        return {"sorgente": sorgente, "competizione": comp, "evento": evento, "esistente": esistente}
+        unica = bool(comp) and e_unica(self.cfg, comp)
+        if unica:
+            esistente = comp
+        else:
+            esistente = trova_cartella_esistente(self.conn, self.rif, comp, evento) if prova and comp else ""
+        return {"sorgente": sorgente, "competizione": comp, "evento": evento, "esistente": esistente,
+                "unica": unica}
 
     def smista(self, sorgente, comp, evento, prova_su=None):
         self._serve_collegamento()
         comp, evento = comp.strip().upper(), evento.strip().upper()
+        unica = e_unica(self.cfg, comp)
         if not comp or not evento:
-            raise RuntimeError("Indica competizione e nome della partita.")
+            raise RuntimeError("Indica la data dell'allenamento." if unica else "Indica competizione e nome della partita.")
+        import re
+        if not re.fullmatch(r"[A-Z0-9][A-Z0-9_\-]*", evento) and unica:
+            raise RuntimeError("La data va scritta solo con numeri, es. 20261102.")
 
         def lavoro():
             rif = self.rif
-            if prova_su:
+            if prova_su and unica:
+                self.reg.info(f"PROVA (non copia nulla): confronto con le foto già presenti in <NOME>/{comp}.")
+                rif, tolte = self.rif.senza(f"/{comp}/")
+                self.reg.info(f"Per una prova onesta ignoro {tolte} volti imparati dalle cartelle {comp}.")
+            elif prova_su:
                 self.reg.info(f"PROVA (non copia nulla): confronto con lo smistamento a mano in "
                               f"<NOME>/{comp}/{prova_su}.")
                 rif, tolte = self.rif.senza(f"/{comp}/{prova_su}/")
                 self.reg.info(f"Per una prova onesta ignoro {tolte} volti imparati proprio da questa partita.")
+            elif unica:
+                self.reg.info(f"Le foto andranno in <NOME>/{comp}, con «{evento}_» davanti al nome, "
+                              "ma solo dopo la tua revisione.")
             else:
                 self.reg.info(f"Le foto andranno in <NOME>/{comp}/{evento}, ma solo dopo la tua revisione.")
             d = analizza_cartella(self.cfg, self.conn, self.volti, rif, normalizza(sorgente), comp, evento,
@@ -247,15 +265,19 @@ class App:
 
     def sfoglia(self, percorso):
         self._serve_collegamento()
-        base = self.cfg.get("cartella_partite") or posixpath.join(
-            posixpath.dirname(self.cfg["cartella_giocatori"].rstrip("/")), "MATCH")
-        stagione = posixpath.dirname(base.rstrip("/")) or "/"
-        p = normalizza(percorso) if percorso else base
-        if not (p + "/").startswith(stagione.rstrip("/") + "/"):
-            p = base  # si sfoglia solo dentro la stagione
+        giocatori = self.cfg["cartella_giocatori"].rstrip("/")
+        stagione = posixpath.dirname(giocatori) or "/"
+        p = normalizza(percorso) if percorso else stagione
+        if not (p + "/").startswith(stagione.rstrip("/") + "/") or p == stagione.rstrip("/") + "/":
+            p = stagione  # si sfoglia solo dentro la stagione
         cartelle, foto = self.conn.elenca_cartelle(p)
+        if p.rstrip("/") == stagione.rstrip("/"):
+            cartelle = [c for c in cartelle if c.upper() != posixpath.basename(giocatori).upper()]
+        comp, evento = ricava_evento(self.cfg, p)
+        scegli = foto > 0 or p.rstrip("/").split("/")[-1].upper() == "FOTO" or \
+            (bool(comp) and e_unica(self.cfg, comp) and bool(evento))
         return {"percorso": p, "su": posixpath.dirname(p) if p.rstrip("/") != stagione.rstrip("/") else None,
-                "cartelle": cartelle, "foto": foto}
+                "cartelle": cartelle, "foto": foto, "selezionabile": scegli}
 
     def _cartella_lavoro(self, lavoro_id):
         esistenti = os.listdir(self.lavori) if os.path.isdir(self.lavori) else []
@@ -512,8 +534,8 @@ footer{max-width:1180px;margin:0 auto;padding:0 24px 30px;color:var(--tenue);fon
   <div id="problema"></div>
  </section>
  <section class="carta">
-  <h2>2 · Smista una partita</h2>
-  <p class="nota">Scegli su MEGA la cartella <b>Foto</b> della partita: competizione › partita › Foto.</p>
+  <h2>2 · Smista una partita o un allenamento</h2>
+  <p class="nota">Scegli su MEGA la cartella delle foto. Partite: MATCH › competizione › partita › <b>Foto</b>. Allenamenti: ALLENAMENTI › mese › <b>giorno</b>.</p>
   <div class="riga" style="margin-top:0"><button class="primo" id="bSfoglia">Sfoglia le cartelle su MEGA…</button></div>
   <div id="sfoglia" hidden class="sfoglia">
    <div class="briciole" id="briciole"></div>
@@ -528,12 +550,13 @@ footer{max-width:1180px;margin:0 auto;padding:0 24px 30px;color:var(--tenue);fon
    <div class="percorso" id="destOrig" style="margin-bottom:8px"></div>
    <div class="nota" style="margin:0">Le foto riconosciute andranno in:</div>
    <div class="percorso" id="destPercorso"></div>
-   <div class="campi"><div><label>Competizione</label><input id="comp"></div><div><label>Partita</label><input id="evento"></div></div>
+   <div class="campi"><div><label>Competizione</label><input id="comp"></div><div><label id="lblEvento">Partita</label><input id="evento"></div></div>
    <div class="riga"><button class="primo" id="bSmista">Avvia lo smistamento</button></div>
    <p class="nota" style="margin:8px 0 0">Non copia niente finché non confermi nella pagina di revisione.</p>
-   <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600">Prova su una partita già smistata a mano</summary>
+   <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600">Prova su foto già smistate a mano</summary>
     <p class="nota" style="margin:6px 0">Confronta il risultato con lo smistamento fatto a mano. Non copia nulla.</p>
-    <label class="nota">Cartella della partita nelle cartelle dei giocatori</label><input id="esistente">
+    <div id="provaEsistente"><label class="nota">Cartella della partita nelle cartelle dei giocatori</label><input id="esistente"></div>
+    <p class="nota" id="notaProvaUnica" hidden style="margin:6px 0">Confronta con le foto di questo allenamento già presenti nelle cartelle ALLENAMENTI dei giocatori.</p>
     <div class="riga"><button id="bProva">Fai la prova</button></div></details>
   </div>
  </section>
@@ -646,9 +669,10 @@ async function apri(percorso){
   const ord=[...r.cartelle].sort((a,b)=>(b=="Foto")-(a=="Foto")||a.localeCompare(b,"it",{numeric:true}));
   $("#cartelle").innerHTML=ord.length?ord.map(c=>`<div data-c="${esc(c)}" class="${c=="Foto"?"foto":""}">📁 ${esc(c)}</div>`).join(""):'<div class="vuota">Nessuna sottocartella.</div>';
   $("#cartelle").querySelectorAll("[data-c]").forEach(d=>d.onclick=()=>apri(r.percorso.replace(/\/$/,"")+"/"+d.dataset.c));
-  if(r.foto||parti[parti.length-1]=="Foto"){
+  if(r.selezionabile){
     $("#sfogliaAz").innerHTML=`<button class="primo" id="bUsa">Usa questa cartella</button> <span class="nota">${r.foto} foto qui`+(r.cartelle.length?` + sottocartelle dei fotografi`:"")+`</span>`;
     $("#bUsa").onclick=()=>{$("#percorso").value=r.percorso;$("#sfoglia").hidden=true;controlla()}}
+  else if(parti.length<=1)$("#sfogliaAz").innerHTML='<span class="nota">Partite: <b>MATCH</b> › competizione › partita › <b>Foto</b>. Allenamenti: <b>ALLENAMENTI</b> › mese › <b>giorno</b>.</span>';
   else if(r.cartelle.includes("Foto"))$("#sfogliaAz").innerHTML='<span class="nota">Apri la cartella <b>Foto</b> per selezionarla.</span>';
 }
 $("#bSfoglia").onclick=()=>apri("");
@@ -660,9 +684,14 @@ async function controlla(){const b=$("#bControlla");b.textContent="Controllo…"
   try{C=await api("/api/controlla",{percorso:$("#percorso").value,prova:true});
     $("#destOrig").textContent=C.sorgente;$("#comp").value=C.competizione;$("#evento").value=C.evento;$("#esistente").value=C.esistente;aggDest();$("#dest").hidden=false;
     if(!C.competizione)alert("Non riconosco competizione e partita dal percorso: scrivile tu nei due campi.");
+    else if(C.unica&&!C.evento)alert("Non trovo la data nel percorso: scrivila nel campo Data, es. 20261102.");
     $("#dest").scrollIntoView({behavior:"smooth",block:"nearest"});
   }catch(e){avvisa(e)}finally{b.textContent="Controlla"}}
-function aggDest(){$("#destPercorso").textContent="PLAYERS / <NOME> / "+($("#comp").value||"?").toUpperCase()+" / "+($("#evento").value||"?").toUpperCase()}
+function aggDest(){const u=C&&C.unica,e=($("#evento").value||"?").toUpperCase();
+  $("#destPercorso").textContent=u?`PLAYERS / <NOME> / ${($("#comp").value||"?").toUpperCase()}   (file: ${e}_nomefile.jpg)`:"PLAYERS / <NOME> / "+($("#comp").value||"?").toUpperCase()+" / "+e;
+  $("#lblEvento").textContent=u?"Data (va davanti al nome dei file)":"Partita";
+  $("#provaEsistente").hidden=!!u;
+  $("#notaProvaUnica").hidden=!u}
 $("#comp").oninput=aggDest;$("#evento").oninput=aggDest;
 $("#percorso").oninput=()=>{$("#dest").hidden=true};
 $("#bSmista").onclick=()=>api("/api/smista",{sorgente:C.sorgente,competizione:$("#comp").value,evento:$("#evento").value}).catch(avvisa);
