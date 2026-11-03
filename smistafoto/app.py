@@ -27,8 +27,8 @@ class App:
         self.qui = qui
         self.dati = os.path.join(qui, "dati")
         self.lavori = os.path.join(qui, "lavori")
-        with open(os.path.join(qui, "config.json"), encoding="utf-8") as f:
-            self.cfg = json.load(f)
+        self.file_locali = os.path.join(self.dati, "impostazioni_locali.json")
+        self.cfg = self._leggi_config()
         self.reg = Registro()
         self.conn = self.volti = None
         self.modello = nome_modello(self.cfg)
@@ -242,6 +242,25 @@ class App:
             self.attivita["risultato"] = calibra_insieme(self.cfg, self.conn, self.lavori, self.reg)
         self.avvia("calibra", lavoro)
 
+    def _leggi_config(self):
+        """config.json (del repository) + dati/impostazioni_locali.json (solo su questo
+        computer, scritto dall'app: git non lo tocca, quindi gli aggiornamenti non si bloccano)."""
+        with open(os.path.join(self.qui, "config.json"), encoding="utf-8") as f:
+            cfg = json.load(f)
+        if os.path.exists(self.file_locali):
+            with open(self.file_locali, encoding="utf-8") as f:
+                locali = json.load(f)
+            for k, v in locali.items():
+                if isinstance(v, dict) and isinstance(cfg.get(k), dict):
+                    for k2, v2 in v.items():
+                        if isinstance(v2, dict) and isinstance(cfg[k].get(k2), dict):
+                            cfg[k][k2] = {**cfg[k][k2], **v2}
+                        else:
+                            cfg[k][k2] = v2
+                else:
+                    cfg[k] = v
+        return cfg
+
     def applica_regola(self, r):
         if self.attivita["in_corso"]:
             raise RuntimeError("C'è un'attività in corso: aspetta che finisca.")
@@ -249,14 +268,16 @@ class App:
         if not (0.1 <= valori["soglia"] <= 0.9 and 0 <= valori["relativa_min"] <= 1
                 and 0 <= valori["frazione_min"] <= 0.5 and 0 <= valori["nitidezza_min"] <= 100000):
             raise RuntimeError("Valori della regola non validi.")
-        percorso = os.path.join(self.qui, "config.json")
-        with open(percorso, encoding="utf-8") as f:
-            cfg = json.load(f)
-        cfg.setdefault("soglie", {}).setdefault(self.modello, {})["soglia_sicura"] = valori["soglia"]
-        cfg["protagonista"] = {k: valori[k] for k in ("relativa_min", "frazione_min", "nitidezza_min")}
-        with open(percorso, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
-        self.cfg = cfg
+        locali = {}
+        if os.path.exists(self.file_locali):
+            with open(self.file_locali, encoding="utf-8") as f:
+                locali = json.load(f)
+        locali.setdefault("soglie", {}).setdefault(self.modello, {})["soglia_sicura"] = valori["soglia"]
+        locali["protagonista"] = {k: valori[k] for k in ("relativa_min", "frazione_min", "nitidezza_min")}
+        os.makedirs(self.dati, exist_ok=True)
+        with open(self.file_locali, "w", encoding="utf-8") as f:
+            json.dump(locali, f, ensure_ascii=False, indent=2)
+        cfg = self.cfg = self._leggi_config()
         if self.volti:
             self.volti.cfg = cfg
         from .flussi import descrivi_regola
