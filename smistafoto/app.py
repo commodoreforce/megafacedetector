@@ -217,6 +217,27 @@ class App:
             self.attivita["risultato"] = simula_copia(self.conn, d, decisioni, self.reg)
         self.avvia("simulazione", lavoro)
 
+    def applica_regola(self, r):
+        if self.attivita["in_corso"]:
+            raise RuntimeError("C'è un'attività in corso: aspetta che finisca.")
+        valori = {k: float(r[k]) for k in ("soglia", "relativa_min", "frazione_min", "nitidezza_min")}
+        if not (0.1 <= valori["soglia"] <= 0.9 and 0 <= valori["relativa_min"] <= 1
+                and 0 <= valori["frazione_min"] <= 0.5 and 0 <= valori["nitidezza_min"] <= 100000):
+            raise RuntimeError("Valori della regola non validi.")
+        percorso = os.path.join(self.qui, "config.json")
+        with open(percorso, encoding="utf-8") as f:
+            cfg = json.load(f)
+        cfg.setdefault("soglie", {}).setdefault(self.modello, {})["soglia_sicura"] = valori["soglia"]
+        cfg["protagonista"] = {k: valori[k] for k in ("relativa_min", "frazione_min", "nitidezza_min")}
+        with open(percorso, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        self.cfg = cfg
+        if self.volti:
+            self.volti.cfg = cfg
+        from .flussi import descrivi_regola
+        self.reg.ok("Nuova regola salvata: " + descrivi_regola(cfg["protagonista"], valori["soglia"])
+                    + ". Vale dalla prossima analisi.")
+
     def sfoglia(self, percorso):
         self._serve_collegamento()
         base = self.cfg.get("cartella_partite") or posixpath.join(
@@ -352,6 +373,9 @@ def _gestore(app):
                     r = {"ok": True}
                 elif parti == ["api", "impara"]:
                     app.impara(bool(c.get("tutti")), c.get("solo"))
+                    r = {"ok": True}
+                elif parti == ["api", "regola"]:
+                    app.applica_regola(c)
                     r = {"ok": True}
                 elif parti == ["api", "sfoglia"]:
                     r = app.sfoglia(c.get("percorso", ""))
@@ -567,12 +591,19 @@ function mostraElenco(s){
       if(r.ok)ok++;else alert((await r.json()).errore)}
     if(ok&&confirm(`${ok} primi piani aggiunti per ${nome}. Lo reimparo adesso?`))api("/api/impara",{solo:[nome]}).catch(avvisa)});
 }
+let REGOLE=[];
+function regole(p){if(!p.regole||!p.regole.length)return"";REGOLE=p.regole;
+  return `<div style="margin-top:12px"><b>Regole proposte</b><p class="nota" style="margin:4px 0 8px">Lo script ha provato molte combinazioni (somiglianza, grandezza del volto, nitidezza) per avvicinarsi al vostro criterio «almeno un po' protagonista». In alto: trova più foto; in basso: sbaglia meno. Scegline una: vale dalla prossima analisi.</p>
+  <table><tr><th>Regola</th><th>Proposte</th><th>Precisione</th><th>Lavoro trovato</th><th></th></tr>`+
+  p.regole.map((r,i)=>`<tr style="${r.attuale?"font-weight:700":""}"><td>${esc(r.descrizione)}${r.attuale?" <span class='nota'>(in uso)</span>":""}</td><td>${r.proposte}</td><td>${r.precisione}%</td><td>${r.copertura}%</td><td>${r.attuale?"":`<button data-regola="${i}">Usa questa</button>`}</td></tr>`).join("")+"</table></div>"}
+document.addEventListener("click",e=>{const b=e.target.closest("[data-regola]");if(!b)return;const r=REGOLE[+b.dataset.regola];
+  if(confirm("Uso questa regola dalla prossima analisi?\n\n"+r.descrizione))api("/api/regola",r).then(()=>{b.textContent="In uso ✓";b.disabled=true}).catch(avvisa)});
 function taratura(p){if(!p.taratura)return"";
   return `<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">Taratura: cosa succederebbe con soglie diverse</summary>
-  <p class="nota" style="margin:6px 0">Soglia più alta = meno errori ma meno foto trovate. La riga in grassetto è quella in uso.</p>
+  <p class="nota" style="margin:6px 0">Solo la somiglianza, senza regola del protagonista. Soglia più alta = meno errori ma meno foto trovate.</p>
   <table><tr><th>Soglia</th><th>Proposte</th><th>Precisione</th><th>Lavoro trovato</th></tr>`+
   p.taratura.map(r=>`<tr style="${Math.abs(r.soglia-p.soglia_attuale)<0.001?"font-weight:700":""}"><td>${r.soglia.toFixed(2)}</td><td>${r.proposte}</td><td>${r.precisione}%</td><td>${r.copertura}%</td></tr>`).join("")+"</table></details>"}
-function tilesProva(p){return `<div class="tiles"><div><b>${p.precisione}%</b>precisione (giuste sulle proposte)</div><div><b>${p.copertura}%</b>del lavoro a mano trovato da solo</div><div><b>${p.sbagliate}</b>assegnazioni sbagliate</div><div><b>${p.giuste}</b>giuste su ${p.a_mano} fatte a mano</div><div><b>${p.tra_i_dubbi}</b>altre trovate tra i dubbi</div><div><b>${p.mancate}</b>mancate del tutto</div></div>`+taratura(p)}
+function tilesProva(p){return `<div class="tiles"><div><b>${p.precisione}%</b>precisione (giuste sulle proposte)</div><div><b>${p.copertura}%</b>del lavoro a mano trovato da solo</div><div><b>${p.sbagliate}</b>assegnazioni sbagliate</div><div><b>${p.giuste}</b>giuste su ${p.a_mano} fatte a mano</div><div><b>${p.tra_i_dubbi}</b>altre trovate tra i dubbi</div><div><b>${p.mancate}</b>mancate del tutto</div></div>`+regole(p)+taratura(p)}
 function mostraEsito(a){
   const e=$("#esito");
   if(a.in_corso||!a.tipo){e.innerHTML="";return}

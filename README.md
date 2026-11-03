@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **2.0** · 2 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
+Versione **2.1** · 3 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
 
 Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro cartelle:
 
@@ -113,6 +113,12 @@ Le analisi restano in **«Analisi recenti»**: si può riaprire la revisione in 
 `Rossi_DSC_0412.jpg`, così due fotografi con lo stesso nome file non si sovrascrivono.
 Le foto già presenti nella cartella del giocatore vengono saltate.
 
+**Protagonisti e comparse:** si smistano solo le foto in cui la persona è almeno un po'
+protagonista. Per ogni volto lo script misura quanto è grande (rispetto alla foto e al
+volto più grande) e quanto è a fuoco. Chi è riconosciuto ma è una comparsa finisce nella
+sezione chiusa **«Comparse»** della revisione e non viene copiato, a meno di cliccarlo.
+La regola si sceglie dalla prova pilota (tabella **«Regole proposte»**, pulsante **«Usa questa»**).
+
 **Nomi nel file:** se il fotografo ha scritto un cognome nel nome del file
 (es. `775A5531.Mangraviti.jpg`) e il volto non è stato riconosciuto, la foto compare tra
 quelle **da verificare** con quel nome come suggerimento. Il nome nel file non basta mai
@@ -150,6 +156,7 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 | `competizioni` | come si traducono i nomi: `SERIEBKT` → `SERIE BKT`, ecc. |
 | `nome_partita` | maiuscolo e senza risultato (`G10_SUDTIROL_CESENA`) |
 | `prefisso_fotografo` | aggiunge il nome della sottocartella del fotografo al file |
+| `protagonista` | `relativa_min`, `frazione_min`, `nitidezza_min`: quando un volto conta come protagonista. Di solito si imposta dalla prova con «Usa questa» |
 | `modello` | `auraface` (predefinito) oppure `sface` |
 | `soglie` | per modello, es. `"soglie": {"auraface": {"soglia_sicura": 0.45}}`. `soglia_sicura`: più alta = meno errori ma più foto da verificare; `soglia_dubbia`: sotto, un volto viene ignorato; `margine`: distacco minimo dal secondo candidato. La tabella «Taratura» della prova dice quale soglia conviene |
 | `modalita` | sempre `megacmd` (`cartella_locale` serve solo per i test) |
@@ -170,6 +177,7 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 
 ## Versioni
 
+- **2.1** (3 novembre 2026): regola del «protagonista» (grandezza e nitidezza del volto): le comparse non vengono smistate; la prova propone le regole migliori e si applicano con un clic.
 - **2.0** (2 novembre 2026): nuovo modello di riconoscimento AuraFace (molto più preciso con profili, cappellini e foto difficili); taratura delle soglie nella prova. Dopo l'aggiornamento: rilanciare l'installazione e reimparare i volti.
 - **1.11** (2 novembre 2026): il nome nel file è solo un suggerimento tra i volti da verificare, mai un'assegnazione sicura (i fotografi a volte sbagliano).
 - **1.10** (2 novembre 2026): se il fotografo ha scritto il cognome nel nome del file, la foto va a quella persona; corretto il filtro «solo le rosse».

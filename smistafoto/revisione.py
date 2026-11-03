@@ -12,6 +12,8 @@ def pagina_revisione(lavoro_id, lavoro, prova=None):
     dati["id"] = lavoro_id
     dati["prova"] = bool(lavoro.get("prova_su"))
     dati["esiti"] = (prova or {}).get("esiti")
+    dati["regole"] = (prova or {}).get("regole") or []
+    dati["numeri"] = {k: (prova or {}).get(k) for k in ("precisione", "copertura", "giuste", "a_mano")}
     js = json.dumps(dati, ensure_ascii=False).replace("</", "<\\/")
     return PAGINA.replace("/*DATI*/null", js)
 
@@ -93,6 +95,9 @@ th{color:var(--tenue);font-weight:600;font-size:12px}
 <section><h2>Riconosciute <small id="nSicure"></small></h2>
 <p class="nota">Clicca una miniatura per escluderla. Passa sopra con il mouse per vedere la foto intera.</p>
 <div id="sicure"></div></section>
+<details id="secComparse"><summary id="nComparse"></summary>
+<p class="nota">Persone riconosciute ma non protagoniste della foto (piccole, sullo sfondo, fuori fuoco): <b>non vengono copiate</b>. Clicca una miniatura per copiarla comunque.</p>
+<div id="comparse"></div></details>
 <details id="secNessuno"><summary id="nNessuno"></summary>
 <p class="nota">Foto in cui lo script non ha riconosciuto nessuno (campi lunghi, spalle, pubblico). Se vuoi, assegnale a mano.</p>
 <div class="nessuno" id="nessuno"></div></details>
@@ -139,7 +144,15 @@ if(E){const s=D.volti.filter(v=>v.stato=="sicuro"),no=s.filter(v=>E[v.id]=="no")
   $("#provaBanner").hidden=false;
   $("#provaBanner").innerHTML=`<b>Prova</b> · confronto con lo smistamento fatto a mano:<span class="leg" style="background:#1e9e4a"></span>c'è anche a mano<span class="leg" style="background:#e0352b"></span>non c'è a mano (${no} su ${s.length} sicure).
   Il numero in basso a sinistra di ogni volto è la sua larghezza in pixel: le facce piccole sono di solito persone sullo sfondo.
-  <div style="margin-top:10px"><button id="soloNo">Mostra solo le rosse</button></div>`;
+  <div style="margin-top:10px"><button id="soloNo">Mostra solo le rosse</button></div>`+
+  (D.regole.length?`<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600;margin:0">Regole proposte per «almeno un po' protagonista»</summary>
+  <p class="nota" style="margin:6px 0">In alto: trova più foto; in basso: sbaglia meno. «Usa questa» vale dalla prossima analisi.</p>
+  <table><tr><th>Regola</th><th>Proposte</th><th>Precisione</th><th>Lavoro trovato</th><th></th></tr>`+
+  D.regole.map((r,i)=>`<tr style="${r.attuale?"font-weight:700":""}"><td>${esc(r.descrizione)}${r.attuale?" (in uso)":""}</td><td>${r.proposte}</td><td>${r.precisione}%</td><td>${r.copertura}%</td><td>${r.attuale?"":`<button data-regola="${i}">Usa questa</button>`}</td></tr>`).join("")+`</table></details>`:"");
+  document.querySelectorAll("[data-regola]").forEach(b=>b.onclick=async()=>{const r=D.regole[+b.dataset.regola];
+    if(!confirm("Uso questa regola dalla prossima analisi?\n\n"+r.descrizione))return;
+    const x=await fetch("/api/regola",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(r)});
+    if(x.ok){b.textContent="In uso ✓";b.disabled=true}else alert((await x.json()).errore)});
   let solo=false;$("#soloNo").onclick=()=>{solo=!solo;$("#soloNo").textContent=solo?"Mostra tutte":"Mostra solo le rosse";
     document.querySelectorAll(".mini.ok,.carta.okv").forEach(m=>m.classList.toggle("nascosto",solo));
     document.querySelectorAll(".persona").forEach(p=>p.classList.toggle("nascosto",solo&&!p.querySelector(".mini.no")))}}
@@ -163,6 +176,20 @@ for(const p of persone.filter(p=>perPersona[p])){
     m.onclick=()=>{escluse.has(v.id)?escluse.delete(v.id):escluse.add(v.id);m.classList.toggle("off");contaAgg();aggiorna()};
     g.append(m)}
   contaAgg();$("#sicure").append(box)}
+const comparse=D.volti.filter(v=>v.stato=="comparsa"), recuperate=new Set();
+$("#nComparse").textContent="Comparse: riconosciute ma non protagoniste ("+comparse.length+")";
+if(!comparse.length)$("#secComparse").hidden=true;
+$("#secComparse").ontoggle=()=>{if($("#comparse").children.length)return;
+  const per={};for(const v of comparse)(per[v.persona]??=[]).push(v);
+  for(const p of persone.filter(p=>per[p])){
+    const box=document.createElement("div");box.className="persona";
+    box.innerHTML=`<div class="testa"><span><b>${esc(p)}</b><span class="tipo">${D.persone[p]}</span> <span class="nota">${per[p].length}</span></span></div><div class="griglia"></div>`;
+    const g=box.querySelector(".griglia");
+    for(const v of per[p]){const m=document.createElement("div");m.className="mini off"+(E?" "+E[v.id]:"");
+      m.innerHTML=`<img src="${B}/m/${v.mini}" alt="" loading="lazy">`+(v.larghezza?`<span class="px">${v.larghezza}px</span>`:"");
+      m.title="clicca per copiarla comunque";hover(m,v.foto);
+      m.onclick=()=>{recuperate.has(v.id)?recuperate.delete(v.id):recuperate.add(v.id);m.classList.toggle("off");aggiorna()};g.append(m)}
+    $("#comparse").append(box)}};
 const conVolti=new Set(D.volti.map(v=>v.foto));
 const vuote=D.foto.filter(f=>!conVolti.has(f.id));
 $("#nNessuno").textContent="Foto senza nessuno riconosciuto ("+vuote.length+")";
@@ -175,6 +202,7 @@ $("#secNessuno").ontoggle=()=>{if(!$("#nessuno").children.length)for(const f of 
 function decisioni(){
   const out=[];
   for(const v of sicure)if(!escluse.has(v.id))out.push({foto:v.foto,persona:v.persona,volto:v.solo_nome?null:v.id});
+  for(const v of comparse)if(recuperate.has(v.id))out.push({foto:v.foto,persona:v.persona,volto:v.id});
   for(const v of dubbi)if(sceltaDubbio[v.id])out.push({foto:v.foto,persona:sceltaDubbio[v.id],volto:sceltaDubbio[v.id]==v.persona||v.alternative.some(a=>a[0]==sceltaDubbio[v.id])?v.id:null});
   for(const [f,p] of Object.entries(sceltaNessuno))if(p)out.push({foto:+f,persona:p});
   const visti=new Set();return out.filter(d=>{const k=d.foto+"|"+d.persona;if(visti.has(k))return false;visti.add(k);return true})}

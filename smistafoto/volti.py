@@ -33,6 +33,24 @@ SOGLIE_PREDEFINITE = {
 }
 
 
+PROTAGONISTA_PREDEFINITO = {"relativa_min": 0.0, "frazione_min": 0.0, "nitidezza_min": 0.0}
+
+
+def protagonista(cfg):
+    """Quando un volto riconosciuto conta come protagonista (e la foto va smistata).
+    relativa_min: larghezza minima rispetto al volto più grande della foto (0-1);
+    frazione_min: larghezza minima rispetto al lato lungo della foto (0-1);
+    nitidezza_min: quanto deve essere a fuoco (0 = qualsiasi)."""
+    p = dict(PROTAGONISTA_PREDEFINITO)
+    p.update(cfg.get("protagonista", {}))
+    return p
+
+
+def e_protagonista(regola, relativa, frazione, nitidezza):
+    return (relativa >= regola["relativa_min"] and frazione >= regola["frazione_min"]
+            and nitidezza >= regola["nitidezza_min"])
+
+
 def nome_modello(cfg):
     return cfg.get("modello", "sface").lower()
 
@@ -174,7 +192,16 @@ class Volti:
                 continue
             e = np.asarray(self.riconosci.impronta(grande, f), np.float32).flatten()
             e /= np.linalg.norm(e) + 1e-9
-            risultato.append({"riquadro": [x, y, fw, fh], "affidabilita": float(f[14]), "impronta": e})
+            # quanto è a fuoco il volto: varianza del laplaciano sul ritaglio portato a 112x112
+            x0, y0 = max(0, int(x)), max(0, int(y))
+            ritaglio = grande[y0:int(y + fh), x0:int(x + fw)]
+            nitidezza = 0.0
+            if ritaglio.size:
+                grigio = cv2.cvtColor(cv2.resize(ritaglio, (112, 112), interpolation=cv2.INTER_AREA),
+                                      cv2.COLOR_BGR2GRAY)
+                nitidezza = float(cv2.Laplacian(grigio, cv2.CV_64F).var())
+            risultato.append({"riquadro": [x, y, fw, fh], "affidabilita": float(f[14]), "impronta": e,
+                              "frazione": fw / max(h, w), "nitidezza": nitidezza})
         risultato.sort(key=lambda v: -v["riquadro"][2])
         return risultato, grande
 
