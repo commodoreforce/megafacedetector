@@ -86,16 +86,11 @@ kbd {
   background: #000; color: #fff; position: sticky; top: 0; height: 100vh;
   display: flex; flex-direction: column; padding-bottom: var(--barra);
 }
-.marchio {
-  position: relative; padding: 22px 20px 20px; overflow: hidden;
-  background: repeating-linear-gradient(90deg, #000 0 18px, #fff 18px 36px);
-}
-.marchio::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 30%, #000 100%); }
-.marchio span {
-  position: relative; z-index: 1; display: inline-block; background: #000; color: #fff;
-  font-variation-settings: "wdth" 62; font-weight: 900; font-size: 30px; line-height: .95; padding: 4px 8px 6px;
-}
-.marchio small { position: relative; z-index: 1; display: block; margin-top: 6px; color: #fff; font-size: 12px; }
+/* marchio: lo scudetto del club e il nome dello strumento; sotto, una fascia bianconera */
+.marchio { display: flex; align-items: center; gap: 14px; padding: 20px 20px 18px; position: relative; }
+.marchio::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: repeating-linear-gradient(90deg, #fff 0 12px, #000 12px 24px); }
+.marchio img { height: 68px; width: auto; flex: none; }
+.marchio span { color: #fff; font-variation-settings: "wdth" 62; font-weight: 900; font-size: 28px; line-height: .92; letter-spacing: .01em; }
 .nav { display: flex; flex-direction: column; padding: 10px 10px; gap: 2px; }
 .nav a {
   display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--r-m);
@@ -189,8 +184,8 @@ td .az { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
 .lancio h1 { color: #fff; font-size: 52px; max-width: 12ch; }
 .lancio p { color: #d6d6d2; }
 .lancio .btn.primo { background: #fff; color: #000; border-color: #fff; }
-.lancio .strisce { position: absolute; right: 0; top: 0; bottom: 0; width: 120px; background: repeating-linear-gradient(90deg, #000 0 14px, #fff 14px 28px); opacity: .9; mask-image: linear-gradient(90deg, transparent, #000 70%); -webkit-mask-image: linear-gradient(90deg, transparent, #000 70%); }
-.lancio > *:not(.strisce) { position: relative; z-index: 1; }
+.lancio .scudo { position: absolute; right: -36px; top: 50%; transform: translateY(-50%); height: 128%; width: auto; opacity: .16; pointer-events: none; }
+.lancio > *:not(.scudo) { position: relative; z-index: 1; }
 .lancio > p { max-width: 46ch; padding-right: 40px; }
 .cifre { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0; border: 1px solid var(--linea); border-radius: var(--r-m); background: var(--carta); overflow: hidden; }
 .cifre > div { padding: 18px 20px; border-right: 1px solid var(--linea); border-bottom: 1px solid var(--linea); }
@@ -396,7 +391,7 @@ details.cassetto > .dentro-cassetto { padding: 0 16px 16px; }
   .app { grid-template-columns: minmax(0, 1fr); }
   .rail, .contenuto { min-width: 0; }
   .rail { position: sticky; height: auto; top: 0; z-index: 30; flex-direction: row; align-items: center; padding: 0; }
-  .marchio { padding: 8px 12px; } .marchio span { font-size: 20px; } .marchio small { display: none; }
+  .marchio { padding: 8px 12px 12px; gap: 8px; } .marchio img { height: 38px; } .marchio span { font-size: 17px; } .marchio::after { height: 4px; }
   .nav { flex-direction: row; overflow-x: auto; padding: 6px; flex: 1; min-width: 0; } .nav a { padding: 8px 10px; white-space: nowrap; } .nav a span.et { display: none; }
   .marchio { flex: none; }
   .testa { flex-wrap: wrap; gap: 8px; }

@@ -216,7 +216,7 @@ $("#bEsci").onclick = async () => {
   if (S?.attivita.in_corso && !await conferma("Chiudere Smista Foto?", "C'è un'attività in corso: chiudendo si interrompe.", "Chiudi comunque", "pericolo")) return;
   else if (!S?.attivita.in_corso && !await conferma("Chiudere Smista Foto?", "Potrai riaprirlo con l'icona sulla Scrivania.", "Chiudi")) return;
   await api("/api/esci", {}).catch(() => {});
-  document.body.innerHTML = '<main class="vista"><h1>Smista Foto è chiuso.</h1><p>Puoi chiudere questa finestra e quella del Terminale.</p></main>';
+  document.body.innerHTML = '<main class="vista" style="text-align:center;padding-top:12vh"><img src="/web/scudetto.png" alt="Cesena FC" style="height:160px;background:#000;padding:18px 22px;border-radius:12px"><h1 style="margin-top:24px">Smista Foto è chiuso.</h1><p style="margin:10px auto">Puoi chiudere questa finestra e quella del Terminale.</p></main>';
 };
 window.addEventListener("beforeunload", e => {
   if (S?.attivita.in_corso && S.attivita.tipo === "copia") { e.preventDefault(); e.returnValue = ""; }
@@ -343,7 +343,7 @@ V.home = {
     }
     const deb = s.persone.deboli;
     el.innerHTML = `<div class="benvenuto">
-      <section class="lancio"><div class="strisce" aria-hidden="true"></div>
+      <section class="lancio"><img class="scudo" src="/web/scudetto.png" alt="" aria-hidden="true">
         <h1>Nuove foto da smistare?</h1>
         <p style="margin-top:12px">Scegli la cartella di una partita o di un allenamento su MEGA. Smista Foto riconosce giocatori e staff e ti propone dove copiare ogni foto. Non copia niente finché non confermi.</p>
         <div class="riga-btn"><a class="btn primo grande" href="#/smista">Smista una cartella</a></div>
