@@ -88,6 +88,15 @@ passo 5 "Metto l'icona «Smista Foto» sulla Scrivania"
 APP="$HOME/Desktop/Smista Foto.app"
 rm -rf "$APP"
 if osacompile -o "$APP" -e "do shell script \"open -a Terminal \" & quoted form of \"$QUI/Avvia_Mac.command\"" 2>/dev/null; then
+  # icona con lo scudetto del Cesena
+  SET="$(mktemp -d)/icona.iconset"; mkdir -p "$SET"
+  for d in 16 32 128 256 512; do
+    sips -z $d $d installazione/icona.png --out "$SET/icon_${d}x${d}.png" >/dev/null 2>&1
+    sips -z $((d*2)) $((d*2)) installazione/icona.png --out "$SET/icon_${d}x${d}@2x.png" >/dev/null 2>&1
+  done
+  if iconutil -c icns "$SET" -o "$APP/Contents/Resources/applet.icns" 2>/dev/null; then
+    touch "$APP"
+  fi
   ok "Icona creata: d'ora in poi apri Smista Foto con un doppio clic sulla Scrivania"
 else
   ln -sf "$QUI/Avvia_Mac.command" "$HOME/Desktop/Smista Foto.command" && ok "Collegamento creato sulla Scrivania"

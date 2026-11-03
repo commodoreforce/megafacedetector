@@ -113,7 +113,7 @@ try {
   $lnk = $sh.CreateShortcut((Join-Path $desk "Smista Foto.lnk"))
   $lnk.TargetPath = Join-Path $Qui "Avvia_Windows.bat"
   $lnk.WorkingDirectory = $Qui
-  $lnk.IconLocation = "$env:SystemRoot\System32\imageres.dll,108"
+  $lnk.IconLocation = (Join-Path $Qui "installazione\icona.ico") + ",0"
   $lnk.Description = "Smista Foto - Cesena FC"
   $lnk.Save()
   Ok "Icona creata: d'ora in poi apri Smista Foto con un doppio clic sulla Scrivania"
