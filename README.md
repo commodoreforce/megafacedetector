@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **2.3** · 3 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
+Versione **2.3.1** · 3 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
 
 Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro cartelle:
 
@@ -169,6 +169,10 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 
 ## 3. Impostazioni (`config.json`)
 
+Le scelte fatte dall'app (la regola scelta con «Usa questa») vanno in
+`dati/impostazioni_locali.json`, solo su quel computer, e hanno la precedenza su `config.json`.
+Non modificare `config.json` a mano: un aggiornamento con `git pull` si bloccherebbe.
+
 | Voce | A cosa serve |
 |---|---|
 | `cartella_partite`, `cartella_allenamenti` | dove caricano i fotografi (informativo: «Sfoglia» parte dalla stagione) |
@@ -198,6 +202,7 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 
 ## Versioni
 
+- **2.3.1** (3 novembre 2026): la regola scelta con «Usa questa» si salva in `dati/impostazioni_locali.json` e non più in `config.json`, così `git pull` non si blocca.
 - **2.3** (3 novembre 2026): smistamento degli allenamenti nella cartella unica PLAYERS/<NOME>/ALLENAMENTI, con la data davanti al nome dei file; «Sfoglia» parte dalla stagione.
 - **2.2** (3 novembre 2026): «Calcola la regola su tutte le prove»: la regola del protagonista si sceglie su più partite insieme, con i numeri di ciascuna.
 - **2.1** (3 novembre 2026): regola del «protagonista» (grandezza e nitidezza del volto): le comparse non vengono smistate; la prova propone le regole migliori e si applicano con un clic.
