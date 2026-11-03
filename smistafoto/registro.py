@@ -13,6 +13,7 @@ class Registro:
         self.i = 0
         self.n = 0
         self.dettaglio = ""
+        self.inizio_fase = time.time()
 
     def _scrivi(self, testo, tipo):
         ora = time.strftime("%H:%M:%S")
@@ -36,6 +37,7 @@ class Registro:
 
     def inizia_fase(self, fase, n=0):
         self.fase, self.i, self.n, self.dettaglio = fase, 0, n, ""
+        self.inizio_fase = time.time()
 
     def passo(self, i, dettaglio=""):
         self.i, self.dettaglio = i, dettaglio
@@ -45,4 +47,5 @@ class Registro:
     def stato(self, dalla=0):
         with self._lucchetto:
             return {"fase": self.fase, "i": self.i, "n": self.n, "dettaglio": self.dettaglio,
+                    "secondi_fase": round(time.time() - self.inizio_fase, 1),
                     "righe": self.righe[dalla:], "totale_righe": len(self.righe)}

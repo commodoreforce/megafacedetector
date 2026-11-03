@@ -411,7 +411,7 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
         fid = len(foto)
         anteprima = f"f{fid}.jpg"
         if img is not None:
-            _salva_ritaglio(img, None, os.path.join(mini_dir, anteprima), 520)
+            _salva_ritaglio(img, None, os.path.join(mini_dir, anteprima), 1100)
         else:
             illeggibili += 1
         foto.append({"id": fid, "remoto": r, "relativo": rel,
@@ -434,6 +434,9 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
             voce = {"id": vid, "foto": fid, "mini": mini, "stato": stato, "persona": n1,
                     "punteggio": round(s1, 3), "secondo": round(s2, 3), "larghezza": int(v["riquadro"][2]),
                     "relativa": round(relativa, 3), "frazione": round(v["frazione"], 4),
+                    # dove sta il volto nella foto (frazioni): serve a evidenziarlo nell'anteprima
+                    "box": [round(v["riquadro"][0] / img.shape[1], 4), round(v["riquadro"][1] / img.shape[0], 4),
+                            round(v["riquadro"][2] / img.shape[1], 4), round(v["riquadro"][3] / img.shape[0], 4)],
                     "nitidezza": round(v["nitidezza"], 1),
                     "alternative": [[n, round(s, 3)] for s, n in classifica[1:3] if s >= soglia_d - 0.05]}
             if stato == "sicuro":
@@ -522,6 +525,9 @@ def elenca_lavori(cartella_lavori):
                 with open(pp, encoding="utf-8") as f:
                     prova = json.load(f)
             lavori.append({"id": d, "evento": l["evento"], "competizione": l["competizione"],
+                           "sorgente": l.get("sorgente", ""), "unica": bool(l.get("unica")),
+                           "da_decidere": sum(v["stato"] == "dubbio" for v in l["volti"]),
+                           "sicure": sum(v["stato"] == "sicuro" for v in l["volti"]),
                            "creato": l.get("creato", ""), "copiato": l.get("copiato", False),
                            "foto": len(l["foto"]), "prova": prova,
                            "ordine": os.path.getmtime(p)})
@@ -647,8 +653,8 @@ def esegui_copia(conn, rif, lavoro_dir, decisioni, reg):
             dest = posixpath.join(cartella, f["nome_dest"])
             # nelle cartelle uniche lo stesso nome originale può essere di un altro giorno:
             # lì conta solo il nome con la data
-            gia = f["nome_dest"] in presenti or _stessa_foto_gia_presente(conn, lavoro, f, presenti, cache)
-            if gia or conn.esiste(dest):
+            presente = f["nome_dest"] in presenti or _stessa_foto_gia_presente(conn, lavoro, f, presenti, cache)
+            if presente or conn.esiste(dest):
                 esito = "già presente"
                 gia += 1
             else:
