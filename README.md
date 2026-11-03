@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **2.1** · 3 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
+Versione **2.2** · 3 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
 
 Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro cartelle:
 
@@ -118,6 +118,8 @@ protagonista. Per ogni volto lo script misura quanto è grande (rispetto alla fo
 volto più grande) e quanto è a fuoco. Chi è riconosciuto ma è una comparsa finisce nella
 sezione chiusa **«Comparse»** della revisione e non viene copiato, a meno di cliccarlo.
 La regola si sceglie dalla prova pilota (tabella **«Regole proposte»**, pulsante **«Usa questa»**).
+Con prove su almeno due partite, in «Analisi recenti» compare **«Calcola la regola su tutte le
+prove»**: la regola viene scelta perché funzioni su tutte, e per ognuna si vedono i numeri.
 
 **Nomi nel file:** se il fotografo ha scritto un cognome nel nome del file
 (es. `775A5531.Mangraviti.jpg`) e il volto non è stato riconosciuto, la foto compare tra
@@ -177,6 +179,7 @@ quella partita, così la prova è onesta. Il dettaglio per persona è in
 
 ## Versioni
 
+- **2.2** (3 novembre 2026): «Calcola la regola su tutte le prove»: la regola del protagonista si sceglie su più partite insieme, con i numeri di ciascuna.
 - **2.1** (3 novembre 2026): regola del «protagonista» (grandezza e nitidezza del volto): le comparse non vengono smistate; la prova propone le regole migliori e si applicano con un clic.
 - **2.0** (2 novembre 2026): nuovo modello di riconoscimento AuraFace (molto più preciso con profili, cappellini e foto difficili); taratura delle soglie nella prova. Dopo l'aggiornamento: rilanciare l'installazione e reimparare i volti.
 - **1.11** (2 novembre 2026): il nome nel file è solo un suggerimento tra i volti da verificare, mai un'assegnazione sicura (i fotografi a volte sbagliano).

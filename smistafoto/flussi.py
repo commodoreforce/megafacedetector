@@ -189,51 +189,136 @@ def descrivi_regola(r, soglia=None):
     return " · ".join(parti) if parti else "qualsiasi volto riconosciuto"
 
 
-def _cerca_regole(volti_misurabili, nomi_foto, vero, margine, attuale):
+def _cerca_regole(gruppi, attuale):
     """Prova molte combinazioni di soglia e regola del protagonista e tiene le migliori:
-    per ogni livello di 'lavoro trovato' quella con la precisione più alta."""
-    vv = [v for v in volti_misurabili if "frazione" in v]
-    if not vv or not vero:
+    per ogni livello di 'lavoro trovato' quella con la precisione più alta.
+    gruppi: una voce per partita {"nome", "volti", "nomi_foto", "vero", "margine"}:
+    con più partite la regola scelta funziona su tutte, non solo su una."""
+    chiavi, indice, righe = {}, [], []
+    vero_idx = set()
+    for g, gr in enumerate(gruppi):
+        for persona, nome in gr["vero"]:
+            vero_idx.add(chiavi.setdefault((g, persona, nome), len(chiavi)))
+        for v in gr["volti"]:
+            if "frazione" not in v or "secondo" not in v or v.get("solo_nome"):
+                continue
+            k = chiavi.setdefault((g, v["persona"], gr["nomi_foto"][v["foto"]]), len(chiavi))
+            indice.append(k)
+            righe.append((v["punteggio"], v["punteggio"] - v["secondo"] - gr["margine"],
+                          v["relativa"], v["frazione"], v["nitidezza"]))
+    if not righe or not vero_idx:
         return []
-    nit = sorted(v["nitidezza"] for v in vv)
-    quantili = sorted({0.0} | {round(nit[int(len(nit) * q)], 1) for q in (0.2, 0.4, 0.6)})
-    dati = [((v["persona"], nomi_foto[v["foto"]]), v["punteggio"], v["punteggio"] - v["secondo"],
-             v["relativa"], v["frazione"], v["nitidezza"]) for v in vv]
+    M = np.array(righe, np.float64)
+    K = np.array(indice)
+    giusto = np.zeros(len(chiavi), bool)
+    giusto[list(vero_idx)] = True
+    gruppo_di = np.zeros(len(chiavi), int)
+    for (g, _, _), k in chiavi.items():
+        gruppo_di[k] = g
+    vero_per_gruppo = np.bincount(gruppo_di[giusto], minlength=len(gruppi))
+
+    att = attuale or {}
+    soglie_t = sorted({x / 100 for x in range(30, 65, 5)} | ({att["soglia"]} if att.get("soglia") else set()))
+    rel_v = sorted({0.0, 0.4, 0.6, 0.75, 0.9} | {att.get("relativa_min", 0.0)})
+    fr_v = sorted({0.0, 0.015, 0.025, 0.04, 0.06} | {att.get("frazione_min", 0.0)})
+    nit = np.sort(M[:, 4])
+    nit_v = sorted({0.0, att.get("nitidezza_min", 0.0)} |
+                   {round(float(nit[int(len(nit) * q)]), 1) for q in (0.2, 0.4, 0.6)})
+
     prove = []
-    for t in [x / 100 for x in range(30, 65, 5)]:
-        for rel in (0.0, 0.4, 0.6, 0.75, 0.9):
-            for fr in (0.0, 0.015, 0.025, 0.04, 0.06):
-                for n in quantili:
-                    prese = {k for k, p, d, r, f, ni in dati
-                             if p >= t and d >= margine and r >= rel and f >= fr and ni >= n}
-                    if not prese:
+    for t in soglie_t:
+        base = (M[:, 0] >= t) & (M[:, 1] >= 0)
+        for rel in rel_v:
+            m1 = base & (M[:, 2] >= rel)
+            for fr in fr_v:
+                m2 = m1 & (M[:, 3] >= fr)
+                for n in nit_v:
+                    prese = np.unique(K[m2 & (M[:, 4] >= n)])
+                    if not len(prese):
                         continue
-                    g = len(prese & vero)
+                    ok = giusto[prese]
+                    g = int(ok.sum())
+                    per = []
+                    if len(gruppi) > 1:
+                        pg = np.bincount(gruppo_di[prese], minlength=len(gruppi))
+                        gg = np.bincount(gruppo_di[prese[ok]], minlength=len(gruppi))
+                        per = [{"partita": gruppi[i]["nome"],
+                                "precisione": round(100 * gg[i] / max(1, pg[i])),
+                                "copertura": round(100 * gg[i] / max(1, vero_per_gruppo[i]))}
+                               for i in range(len(gruppi))]
                     prove.append({"soglia": t, "relativa_min": rel, "frazione_min": fr, "nitidezza_min": n,
-                                  "proposte": len(prese), "giuste": g,
+                                  "proposte": int(len(prese)), "giuste": g,
                                   "precisione": round(100 * g / len(prese)),
-                                  "copertura": round(100 * g / len(vero))})
+                                  "copertura": round(100 * g / int(giusto.sum())),
+                                  # con più partite conta anche la peggiore, non solo la media
+                                  "peggiore": min([x["precisione"] for x in per], default=None),
+                                  "per_partita": per})
+    chiave = lambda p: (p["soglia"], p["relativa_min"], p["frazione_min"], p["nitidezza_min"])
     scelte, viste = [], set()
     for livello in (85, 75, 65, 55, 45, 35, 25):
         adatte = [p for p in prove if p["copertura"] >= livello]
         if not adatte:
             continue
-        migliore = max(adatte, key=lambda p: (p["precisione"], p["copertura"]))
-        chiave = (migliore["soglia"], migliore["relativa_min"], migliore["frazione_min"], migliore["nitidezza_min"])
-        if chiave not in viste:
-            viste.add(chiave)
+        migliore = max(adatte, key=lambda p: (p["precisione"] + (p["peggiore"] or p["precisione"]),
+                                              p["copertura"]))
+        if chiave(migliore) not in viste:
+            viste.add(chiave(migliore))
             scelte.append(migliore)
-    if attuale:
-        a = [p for p in prove if abs(p["soglia"] - attuale["soglia"]) < 1e-6
-             and p["relativa_min"] == attuale["relativa_min"] and p["frazione_min"] == attuale["frazione_min"]
-             and p["nitidezza_min"] == attuale["nitidezza_min"]]
+    if att:
+        a = [p for p in prove if abs(p["soglia"] - att.get("soglia", -1)) < 1e-6
+             and p["relativa_min"] == att.get("relativa_min", 0.0)
+             and p["frazione_min"] == att.get("frazione_min", 0.0)
+             and p["nitidezza_min"] == att.get("nitidezza_min", 0.0)]
         if a:
             a[0]["attuale"] = True
-            if (a[0]["soglia"], a[0]["relativa_min"], a[0]["frazione_min"], a[0]["nitidezza_min"]) not in viste:
+            if chiave(a[0]) not in viste:
                 scelte.insert(0, a[0])
     for p in scelte:
         p["descrizione"] = descrivi_regola(p, p["soglia"])
     return scelte
+
+
+def _vero(conn, lavoro, cartella_esistente):
+    """Le assegnazioni (persona, nome file) fatte a mano per questa partita. Su MEGA legge soltanto."""
+    insieme_nomi = {posixpath.basename(f["relativo"]) for f in lavoro["foto"]}
+    vero = set()
+    for persona, cartella in lavoro["cartelle_persone"].items():
+        dest = posixpath.join(cartella, lavoro["competizione"], cartella_esistente)
+        for n in conn.elenca_nomi(dest):
+            if n in insieme_nomi:
+                vero.add((persona, n))
+    return vero
+
+
+def _regola_attuale(cfg):
+    sg, pr = soglie(cfg), protagonista(cfg)
+    return {"soglia": sg["soglia_sicura"], **{k: pr[k] for k in ("relativa_min", "frazione_min", "nitidezza_min")}}
+
+
+def calibra_insieme(cfg, conn, cartella_lavori, reg):
+    """Cerca la regola migliore usando TUTTE le prove fatte (una per partita, la più recente).
+    Su MEGA legge soltanto le cartelle già smistate a mano."""
+    prove = {}
+    for l in elenca_lavori(cartella_lavori):
+        d = os.path.join(cartella_lavori, l["id"])
+        lavoro, _ = carica_lavoro(d)
+        if lavoro.get("prova_su") and lavoro["sorgente"] not in prove and \
+                any("frazione" in v for v in lavoro["volti"]):
+            prove[lavoro["sorgente"]] = lavoro
+    if len(prove) < 2:
+        raise RuntimeError("Servono almeno due prove (su partite diverse) fatte con la versione 2.1 o successiva.")
+    reg.inizia_fase("Calcolo la regola su tutte le prove", len(prove))
+    gruppi = []
+    for i, lavoro in enumerate(prove.values(), 1):
+        reg.passo(i, lavoro["evento"])
+        reg.info(f"{lavoro['evento']}: leggo lo smistamento fatto a mano…")
+        vero = _vero(conn, lavoro, lavoro["prova_su"])
+        gruppi.append({"nome": lavoro["evento"], "volti": lavoro["volti"], "vero": vero,
+                       "nomi_foto": {f["id"]: posixpath.basename(f["relativo"]) for f in lavoro["foto"]},
+                       "margine": lavoro.get("margine", 0.0)})
+    regole = _cerca_regole(gruppi, _regola_attuale(cfg))
+    reg.ok(f"Regole calcolate su {len(gruppi)} partite: " + ", ".join(g["nome"] for g in gruppi) + ".")
+    return {"regole": regole, "partite": [g["nome"] for g in gruppi]}
 
 
 def _nome_destinazione(cfg, relativo):
@@ -560,13 +645,7 @@ def confronta(conn, lavoro_dir, cartella_esistente, reg):
     reg.inizia_fase("Confronto con lo smistamento a mano")
     reg.info(f"Leggo le cartelle {lavoro['competizione']}/{cartella_esistente} di ogni persona…")
     nomi_foto = {f["id"]: posixpath.basename(f["relativo"]) for f in lavoro["foto"]}
-    insieme_nomi = set(nomi_foto.values())
-    vero = set()
-    for persona, cartella in lavoro["cartelle_persone"].items():
-        dest = posixpath.join(cartella, lavoro["competizione"], cartella_esistente)
-        for n in conn.elenca_nomi(dest):
-            if n in insieme_nomi:
-                vero.add((persona, n))
+    vero = _vero(conn, lavoro, cartella_esistente)
     sicuri = {(v["persona"], nomi_foto[v["foto"]]) for v in lavoro["volti"] if v["stato"] == "sicuro"}
     dubbi = {(v["persona"], nomi_foto[v["foto"]]) for v in lavoro["volti"] if v["stato"] == "dubbio"} - sicuri
     comparse = {(v["persona"], nomi_foto[v["foto"]]) for v in lavoro["volti"] if v["stato"] == "comparsa"}
@@ -599,7 +678,8 @@ def confronta(conn, lavoro_dir, cartella_esistente, reg):
     if misurabili:
         regola = lavoro.get("protagonista") or {}
         risultato["regole"] = _cerca_regole(
-            misurabili, nomi_foto, vero, lavoro.get("margine", 0.0),
+            [{"nome": lavoro["evento"], "volti": misurabili, "nomi_foto": nomi_foto, "vero": vero,
+              "margine": lavoro.get("margine", 0.0)}],
             {"soglia": lavoro.get("soglia_sicura", 0), "relativa_min": regola.get("relativa_min", 0.0),
              "frazione_min": regola.get("frazione_min", 0.0), "nitidezza_min": regola.get("nitidezza_min", 0.0)})
         if risultato["regole"]:
