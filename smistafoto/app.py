@@ -1,22 +1,23 @@
-"""Smista Foto come app nel browser: un piccolo server sul computer
-(raggiungibile solo da questo computer) con pulsanti, avanzamento e registro."""
+"""Smista Foto come app nel browser: un piccolo server sul computer, raggiungibile
+solo da questo computer (127.0.0.1). L'interfaccia è in smistafoto/web/."""
 
 import json
+import mimetypes
 import os
 import posixpath
 import threading
 import time
 import traceback
-import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from . import DATA_VERSIONE, VERSIONE
 from .flussi import (e_unica, analizza_cartella, calibra_insieme, carica_lavoro, confronta, deboli, elenca_lavori,
                      esegui_copia, impara, ricava_evento, simula_copia, trova_cartella_esistente)
+from .finestra import apri_finestra as _apri_finestra
 from .mega import collegamento, normalizza
 from .registro import Registro
-from .revisione import pagina_revisione
+from .revisione import dati_revisione
 from .volti import Riferimenti, Volti, nome_modello, scarica_auraface
 
 PORTA = 8765
@@ -35,6 +36,8 @@ class App:
         self.rif = Riferimenti(self.dati, self.modello, 512 if self.modello == "auraface" else 128)
         self.account = None
         self.problema = "Controllo del collegamento in corso…"
+        self.stato_mega = "controllo"   # controllo | assente | scollegato | ok
+        self.stato_modello = "attesa"   # attesa | download | pronto | errore
         self.attivita = {"tipo": None, "in_corso": False, "lavoro": None, "risultato": None, "errore": None}
         self._lucchetto = threading.Lock()
         self._cache_lavori = (0, [], None)
@@ -84,12 +87,14 @@ class App:
             try:
                 self.conn = collegamento(self.cfg)
             except Exception as e:
+                self.stato_mega = "assente"
                 self.problema = str(e)
                 if not silenzioso:
                     self.reg.errore(self.problema)
                 return
             chi = self.conn.chi_sono()
             if not chi:
+                self.stato_mega = "scollegato"
                 self.problema = ("MEGAcmd risponde ma non risulta collegato a un account. Nella finestra di "
                                  "MEGAcmd scrivi login seguito dall'email del club e la password. "
                                  "Il semaforo diventa verde da solo entro qualche secondo.")
@@ -98,15 +103,19 @@ class App:
                     self.reg.info("Risposta di MEGAcmd: " + getattr(self.conn, "risposta_whoami", "?"))
                 return
             self.account = chi
+            self.stato_mega = "ok"
             self.reg.ok(f"Collegato a MEGA come {chi}.")
             if self.volti is None:
                 try:
                     if self.modello == "auraface":
+                        self.stato_modello = "download"
                         scarica_auraface(os.path.join(self.qui, "modelli"), self.reg)
                     self.reg.info("Carico il modello di riconoscimento dei volti…")
                     self.volti = Volti(os.path.join(self.qui, "modelli"), self.cfg)
                     self.reg.ok(f"Modello di riconoscimento: {self.volti.nome}.")
+                    self.stato_modello = "pronto"
                 except Exception as e:
+                    self.stato_modello = "errore"
                     self.problema = f"Non riesco a preparare il modello di riconoscimento: {e}"
                     self.reg.errore(self.problema)
                     self._ultimo_controllo = time.time() + 10 ** 9  # niente ricontrolli automatici
@@ -317,6 +326,16 @@ class App:
             semaforo = "giallo"
         else:
             semaforo = "verde" if self.account else "rosso"
+        n_persone = len(self.rif.info)
+        preparazione = [
+            {"id": "megacmd", "fatto": self.stato_mega in ("scollegato", "ok"),
+             "in_corso": self.stato_mega == "controllo"},
+            {"id": "accesso", "fatto": self.stato_mega == "ok", "in_corso": self.stato_mega == "controllo"},
+            {"id": "modello", "fatto": self.stato_modello == "pronto",
+             "in_corso": self.stato_modello == "download", "errore": self.stato_modello == "errore"},
+            {"id": "volti", "fatto": n_persone > 0,
+             "in_corso": self.attivita["in_corso"] and self.attivita["tipo"] == "impara"},
+        ]
         g = sum(1 for i in self.rif.info.values() if i.get("tipo") == "giocatore")
         a = dict(self.attivita)
         if a.get("inizio"):
@@ -324,10 +343,27 @@ class App:
         return {"versione": VERSIONE, "data_versione": DATA_VERSIONE,
                 "modello": self.volti.nome if self.volti else self.modello,
                 "account": self.account, "problema": self.problema, "semaforo": semaforo,
+                "stato_mega": self.stato_mega, "stato_modello": self.stato_modello,
+                "preparazione": preparazione, "pronto": all(p["fatto"] for p in preparazione),
+                "regola": self._descrizione_regola(),
                 "persone": {"giocatori": g, "staff": len(self.rif.info) - g, "deboli": deboli(self.rif)},
                 "elenco": self._lista_persone(), "esclusi": sorted(self.esclusi),
                 "attivita": a, "registro": self.reg.stato(dalla),
                 "lavori": self._lavori()}
+
+    def _descrizione_regola(self):
+        from .flussi import descrivi_regola
+        from .volti import protagonista, soglie
+        return descrivi_regola(protagonista(self.cfg), soglie(self.cfg)["soglia_sicura"])
+
+    def dati_lavoro(self, lavoro_id):
+        d = self._cartella_lavoro(lavoro_id)
+        lavoro, _ = carica_lavoro(d)
+        prova = None
+        if os.path.exists(os.path.join(d, "prova.json")):
+            with open(os.path.join(d, "prova.json"), encoding="utf-8") as fh:
+                prova = json.load(fh)
+        return dati_revisione(lavoro_id, lavoro, prova)
 
     def _lavori(self):
         ora = time.time()
@@ -336,20 +372,23 @@ class App:
         return self._cache_lavori[1]
 
 
-def avvia_app(qui):
+def avvia_app(qui, apri=True):
     app = App(qui)
+    url = f"http://127.0.0.1:{PORTA}/"
     try:
         server = ThreadingHTTPServer(("127.0.0.1", PORTA), _gestore(app))
     except OSError:
-        print(f"Smista Foto è già aperto: apro la pagina http://127.0.0.1:{PORTA}/")
-        webbrowser.open(f"http://127.0.0.1:{PORTA}/")
+        print(f"Smista Foto è già aperto: apro la finestra {url}")
+        if apri:
+            _apri_finestra(url)
         return
-    url = f"http://127.0.0.1:{PORTA}/"
-    print(f"\n=== SMISTA FOTO · Cesena FC · versione {VERSIONE} ===")
-    print(f"L'app si apre nel browser: {url}")
-    print("Lascia aperta questa finestra finché usi Smista Foto. Qui sotto trovi lo stesso registro dell'app.\n")
+    print(f"\n  SMISTA FOTO  Cesena FC  versione {VERSIONE}\n")
+    print(f"  L'app si apre in una finestra: {url}")
+    print("  Tieni aperta questa finestra del Terminale finché usi Smista Foto:")
+    print("  chiudendola si chiude anche l'app. Qui sotto scorre il registro.\n")
     app.collega()
-    threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+    if apri:
+        threading.Timer(0.8, lambda: _apri_finestra(url)).start()
     app.server = server
     try:
         server.serve_forever()
@@ -359,12 +398,15 @@ def avvia_app(qui):
     print("Smista Foto chiuso.")
 
 
+WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+
+
 def _gestore(app):
     class Gestore(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
 
-        def _invia(self, corpo, tipo="application/json; charset=utf-8", codice=200):
+        def _invia(self, corpo, tipo="application/json; charset=utf-8", codice=200, extra=None):
             if isinstance(corpo, (dict, list)):
                 corpo = json.dumps(corpo, ensure_ascii=False)
             if isinstance(corpo, str):
@@ -373,30 +415,47 @@ def _gestore(app):
             self.send_header("Content-Type", tipo)
             self.send_header("Content-Length", str(len(corpo)))
             self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            for k, v in (extra or {}).items():
+                self.send_header(k, v)
             self.end_headers()
             self.wfile.write(corpo)
+
+        def _file_web(self, nome):
+            nome = os.path.basename(nome)
+            percorso = os.path.join(WEB, nome)
+            if not os.path.isfile(percorso):
+                return self._invia(b"", "text/plain", 404)
+            tipo = mimetypes.guess_type(nome)[0] or "application/octet-stream"
+            if tipo.startswith("text/") or tipo in ("application/javascript", "image/svg+xml"):
+                tipo += "; charset=utf-8"
+            with open(percorso, "rb") as fh:
+                self._invia(fh.read(), tipo)
 
         def _corpo(self):
             n = int(self.headers.get("Content-Length", 0) or 0)
             return json.loads(self.rfile.read(n) or b"{}")
+
+        def _stessa_origine(self):
+            # le richieste che cambiano qualcosa devono arrivare dall'app stessa
+            origine = self.headers.get("Origin")
+            return origine in (None, f"http://127.0.0.1:{PORTA}", f"http://localhost:{PORTA}")
 
         def do_GET(self):
             u = urlparse(self.path)
             parti = [p for p in u.path.split("/") if p]
             try:
                 if not parti:
-                    self._invia(HOME, "text/html; charset=utf-8")
+                    self._file_web("index.html")
+                elif parti[0] == "web" and len(parti) == 2:
+                    self._file_web(parti[1])
                 elif parti == ["api", "stato"]:
                     dalla = int(parse_qs(u.query).get("dalla", ["0"])[0])
                     self._invia(app.stato(dalla))
-                elif parti[0] == "l" and len(parti) == 2:
-                    d = app._cartella_lavoro(parti[1])
-                    lavoro, _ = carica_lavoro(d)
-                    prova = None
-                    if os.path.exists(os.path.join(d, "prova.json")):
-                        with open(os.path.join(d, "prova.json"), encoding="utf-8") as fh:
-                            prova = json.load(fh)
-                    self._invia(pagina_revisione(parti[1], lavoro, prova), "text/html; charset=utf-8")
+                elif parti[:2] == ["api", "lavoro"] and len(parti) == 3:
+                    self._invia(app.dati_lavoro(parti[2]))
+                elif parti[0] == "l" and len(parti) == 2:  # vecchi collegamenti alla revisione
+                    self._invia(b"", "text/plain", 302, {"Location": f"/#/revisione/{parti[1]}"})
                 elif parti[0] == "l" and len(parti) == 4 and parti[2] == "m":
                     d = app._cartella_lavoro(parti[1])
                     f = os.path.join(d, "miniature", os.path.basename(parti[3]))
@@ -410,6 +469,8 @@ def _gestore(app):
                 self._invia({"errore": str(e)}, codice=400)
 
         def do_POST(self):
+            if not self._stessa_origine():
+                return self._invia({"errore": "Richiesta non consentita."}, codice=403)
             parti = [p for p in urlparse(self.path).path.split("/") if p]
             try:
                 if parti == ["api", "primopiano"]:
@@ -418,305 +479,36 @@ def _gestore(app):
                     app.salva_primo_piano(q["persona"][0], q["nome"][0], self.rfile.read(n))
                     return self._invia({"ok": True})
                 c = self._corpo()
+                r = {"ok": True}
                 if parti == ["api", "collega"]:
                     app.collega()
-                    r = {"ok": True}
                 elif parti == ["api", "impara"]:
                     app.impara(bool(c.get("tutti")), c.get("solo"))
-                    r = {"ok": True}
                 elif parti == ["api", "calibra"]:
                     app.calibra()
-                    r = {"ok": True}
                 elif parti == ["api", "regola"]:
                     app.applica_regola(c)
-                    r = {"ok": True}
                 elif parti == ["api", "sfoglia"]:
                     r = app.sfoglia(c.get("percorso", ""))
                 elif parti == ["api", "escludi"]:
                     app.escludi(c["nome"], bool(c["escluso"]))
-                    r = {"ok": True}
                 elif parti == ["api", "controlla"]:
                     r = app.controlla(c.get("percorso", ""), bool(c.get("prova")))
                 elif parti == ["api", "smista"]:
                     app.smista(c["sorgente"], c["competizione"], c["evento"])
-                    r = {"ok": True}
                 elif parti == ["api", "prova"]:
-                    if not c.get("esistente", "").strip():
+                    if not str(c.get("esistente", "")).strip():
                         raise RuntimeError("Indica la cartella della partita già smistata a mano.")
                     app.smista(c["sorgente"], c["competizione"], c["evento"], prova_su=c["esistente"].strip())
-                    r = {"ok": True}
                 elif len(parti) == 3 and parti[0] == "l" and parti[2] == "simula":
                     app.simula(parti[1], c["decisioni"])
-                    r = {"ok": True}
                 elif len(parti) == 3 and parti[0] == "l" and parti[2] == "conferma":
                     app.copia(parti[1], c["decisioni"])
-                    r = {"ok": True}
                 elif parti == ["api", "esci"]:
                     threading.Thread(target=app.server.shutdown, daemon=True).start()
-                    r = {"ok": True}
                 else:
                     return self._invia({"errore": "sconosciuto"}, codice=404)
                 self._invia(r)
             except Exception as e:
                 self._invia({"errore": str(e)}, codice=400)
     return Gestore
-
-
-STILE = r"""
-:root{--fondo:#f4f4f0;--carta:#fff;--testo:#16161c;--tenue:#6b6b75;--bordo:#dcdcd4;--primo:#0a0a0c;--primo-t:#fff;
---ok:#1e7a3c;--okf:#e3f3e7;--avv:#9a5b00;--avvf:#fff2dc;--err:#b3261e;--errf:#fde8e6;--accento:#0a0a0c}
-@media (prefers-color-scheme:dark){:root{--fondo:#111114;--carta:#1b1b20;--testo:#f4f4f0;--tenue:#9a9aa6;--bordo:#2e2e36;
---primo:#f4f4f0;--primo-t:#0a0a0c;--ok:#5fd07f;--okf:#16301f;--avv:#ffb347;--avvf:#33270f;--err:#ff8a80;--errf:#3a1714;--accento:#f4f4f0}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--fondo);color:var(--testo);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
-button,input,select{font:inherit;color:inherit}
-button{border-radius:8px;border:1px solid var(--bordo);background:var(--carta);padding:9px 14px;cursor:pointer;font-weight:600}
-button.primo{background:var(--primo);color:var(--primo-t);border-color:var(--primo)}
-button:disabled{opacity:.45;cursor:default}
-input{width:100%;border:1px solid var(--bordo);border-radius:8px;padding:9px 11px;background:var(--carta)}
-a{color:inherit}
-"""
-
-HOME = r"""<!doctype html>
-<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Smista Foto</title><style>""" + STILE + r"""
-header{background:#0a0a0c;color:#f4f4f0;padding:16px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-header h1{margin:0;font-size:20px;letter-spacing:.08em}
-header .ver{font-size:12px;border:1px solid #55555f;border-radius:20px;padding:2px 10px;color:#c8c8d0}
-header .conto{margin-left:auto;font-size:14px;display:flex;align-items:center;gap:12px}
-.semaforo{display:flex;gap:5px;background:#1d1d22;border:1px solid #33333b;border-radius:20px;padding:5px 8px}
-.semaforo i{width:14px;height:14px;border-radius:50%;background:#3a3a42}
-.semaforo.rosso .r{background:#ff4d40;box-shadow:0 0 8px #ff4d40}
-.semaforo.giallo .g{background:#ffc531;box-shadow:0 0 8px #ffc531}
-.semaforo.verde .v{background:#4ddc6f;box-shadow:0 0 8px #4ddc6f}
-.conto b{display:block;font-size:14px}.conto small{color:#a0a0aa;font-size:12px}
-main{max-width:1180px;margin:0 auto;padding:20px 24px 80px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:18px}
-@media (max-width:900px){main{grid-template-columns:1fr}}
-.carta{background:var(--carta);border:1px solid var(--bordo);border-radius:12px;padding:18px}
-.carta h2{margin:0 0 4px;font-size:17px}
-.nota{color:var(--tenue);font-size:13.5px;margin:0 0 12px}
-.riga{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
-.problema{background:var(--errf);color:var(--err);border-radius:8px;padding:10px 12px;margin-top:10px}
-.problema button{margin-top:8px}
-.grandi{display:flex;gap:18px;margin:6px 0 4px}
-.grandi div{font-size:13px;color:var(--tenue)}.grandi b{display:block;font-size:26px;color:var(--testo);line-height:1.1}
-.avviso{background:var(--avvf);color:var(--avv);border-radius:8px;padding:8px 11px;font-size:13.5px;margin-top:10px}
-.dest{background:var(--fondo);border-radius:8px;padding:12px;margin-top:12px}
-.dest .percorso{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13.5px;word-break:break-all}
-.campi{display:grid;grid-template-columns:1fr 1.4fr;gap:8px;margin-top:8px}
-.campi label{font-size:12px;color:var(--tenue)}
-.col-sx{display:flex;flex-direction:column;gap:18px}
-.att{display:flex;flex-direction:column;min-height:520px}
-.fase{font-weight:700;font-size:16px;min-height:24px}
-.barra{height:10px;background:var(--fondo);border-radius:6px;overflow:hidden;margin:8px 0 4px}
-.barra i{display:block;height:100%;background:var(--accento);width:0;transition:width .4s}
-.det{font-size:12.5px;color:var(--tenue);min-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.registro{flex:1;margin-top:12px;background:var(--fondo);border-radius:8px;padding:10px 12px;overflow:auto;max-height:420px;font-size:13.5px}
-.registro p{margin:0 0 4px;display:flex;gap:8px}
-.registro .ora{color:var(--tenue);font-variant-numeric:tabular-nums;flex:none}
-.registro .ok{color:var(--ok)}.registro .avviso{color:var(--avv)}.registro .errore{color:var(--err);font-weight:600}
-.esito{margin-top:12px}
-.sfoglia{border:1px solid var(--bordo);border-radius:10px;margin-top:12px;overflow:hidden}
-.briciole{background:var(--fondo);padding:8px 12px;font-size:13px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
-.briciole a{cursor:pointer;text-decoration:underline}
-.cartelle{max-height:300px;overflow:auto}
-.cartelle div{padding:9px 12px;border-top:1px solid var(--bordo);cursor:pointer;display:flex;gap:8px;align-items:center}
-.cartelle div:hover{background:var(--fondo)}
-.cartelle div.foto{font-weight:700}
-.cartelle .vuota{color:var(--tenue);cursor:default}
-#sfogliaAz{padding:0 12px 12px}
-#elenco table td{vertical-align:middle}
-#elenco .az{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
-#elenco button{padding:5px 10px;font-size:13px;font-weight:500}
-.debole{color:var(--avv);font-weight:600}
-.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
-.tiles div{background:var(--fondo);border-radius:8px;padding:10px;font-size:12.5px;color:var(--tenue)}
-.tiles b{display:block;font-size:22px;color:var(--testo)}
-table{width:100%;border-collapse:collapse;font-size:13.5px}
-td,th{padding:7px 6px;border-bottom:1px solid var(--bordo);text-align:left}
-th{font-weight:600;color:var(--tenue);font-size:12px}
-.etich{font-size:12px;border-radius:20px;padding:2px 9px;white-space:nowrap}
-.etich.da{background:var(--avvf);color:var(--avv)}.etich.fatto{background:var(--okf);color:var(--ok)}.etich.prova{background:var(--fondo);color:var(--tenue)}
-footer{max-width:1180px;margin:0 auto;padding:0 24px 30px;color:var(--tenue);font-size:13px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
-</style></head><body>
-<header><h1>SMISTA FOTO</h1><span>Cesena FC</span><span class="ver" id="ver"></span>
-<span class="conto" title="Collegamento a MEGA"><span class="semaforo" id="semaforo"><i class="r"></i><i class="g"></i><i class="v"></i></span><span><b id="conto">Controllo MEGA…</b><small id="contoSub"></small></span></span></header>
-<main>
-<div class="col-sx">
- <section class="carta">
-  <h2>1 · Volti di giocatori e staff</h2>
-  <p class="nota">Lo script impara i volti dalle cartelle in PLAYERS e PLAYERS/_STAFF. Va fatto la prima volta e quando arriva qualcuno di nuovo. Su MEGA legge soltanto.</p>
-  <div class="grandi"><div><b id="nG">0</b>giocatori</div><div><b id="nS">0</b>staff</div></div>
-  <div id="deboli"></div>
-  <div class="riga"><button class="primo" id="bImpara">Impara i volti nuovi</button><button id="bReimpara">Reimpara tutti da zero</button></div>
-  <details id="elencoBox" style="margin-top:14px"><summary style="cursor:pointer;font-weight:600" id="elencoTit">Elenco delle persone</summary>
-   <p class="nota" style="margin:8px 0">In alto chi ha poche foto. <b>Primi piani</b>: scegli 3-5 foto in cui si vede bene il volto, poi premi «Reimpara». <b>Escludi</b>: per le cartelle che non sono persone (es. 00VARIE).</p>
-   <div id="elenco"></div></details>
-  <div id="problema"></div>
- </section>
- <section class="carta">
-  <h2>2 · Smista una partita o un allenamento</h2>
-  <p class="nota">Scegli su MEGA la cartella delle foto. Partite: MATCH › competizione › partita › <b>Foto</b>. Allenamenti: ALLENAMENTI › mese › <b>giorno</b>.</p>
-  <div class="riga" style="margin-top:0"><button class="primo" id="bSfoglia">Sfoglia le cartelle su MEGA…</button></div>
-  <div id="sfoglia" hidden class="sfoglia">
-   <div class="briciole" id="briciole"></div>
-   <div id="cartelle" class="cartelle"></div>
-   <div class="riga" id="sfogliaAz"></div>
-  </div>
-  <details style="margin-top:10px"><summary class="nota" style="cursor:pointer;margin:0">oppure incolla il percorso a mano</summary>
-  <input id="percorso" style="margin-top:8px" placeholder="2026-27/MATCH/SERIEBKT/G10_Sudtirol_Cesena_1_1/Foto">
-  <div class="riga"><button id="bControlla">Controlla</button></div></details>
-  <div id="dest" hidden class="dest">
-   <div class="nota" style="margin:0">Cartella scelta:</div>
-   <div class="percorso" id="destOrig" style="margin-bottom:8px"></div>
-   <div class="nota" style="margin:0">Le foto riconosciute andranno in:</div>
-   <div class="percorso" id="destPercorso"></div>
-   <div class="campi"><div><label>Competizione</label><input id="comp"></div><div><label id="lblEvento">Partita</label><input id="evento"></div></div>
-   <div class="riga"><button class="primo" id="bSmista">Avvia lo smistamento</button></div>
-   <p class="nota" style="margin:8px 0 0">Non copia niente finché non confermi nella pagina di revisione.</p>
-   <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600">Prova su foto già smistate a mano</summary>
-    <p class="nota" style="margin:6px 0">Confronta il risultato con lo smistamento fatto a mano. Non copia nulla.</p>
-    <div id="provaEsistente"><label class="nota">Cartella della partita nelle cartelle dei giocatori</label><input id="esistente"></div>
-    <p class="nota" id="notaProvaUnica" hidden style="margin:6px 0">Confronta con le foto di questo allenamento già presenti nelle cartelle ALLENAMENTI dei giocatori.</p>
-    <div class="riga"><button id="bProva">Fai la prova</button></div></details>
-  </div>
- </section>
- <section class="carta"><h2>Analisi recenti</h2><div id="lavori"><p class="nota">Nessuna analisi.</p></div></section>
-</div>
-<section class="carta att">
- <h2>Cosa sta facendo</h2>
- <div class="fase" id="fase">In attesa</div>
- <div class="barra"><i id="barra"></i></div>
- <div class="det" id="det"></div>
- <div class="esito" id="esito"></div>
- <div class="registro" id="registro"></div>
-</section>
-</main>
-<footer><span>Lascia aperta la finestra del Terminale finché usi Smista Foto.</span><button id="bEsci">Chiudi Smista Foto</button></footer>
-<script>
-const $=s=>document.querySelector(s);
-const esc=t=>String(t??"").replace(/[&<>"']/g,c=>"&#"+c.charCodeAt(0)+";");
-let righe=0, S=null, ultimoEsito="";
-async function api(url,dati){const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dati||{})});
-  const j=await r.json();if(!r.ok)throw new Error(j.errore||"errore");return j}
-function avvisa(e){alert(e.message||e)}
-async function aggiorna(){
-  let s;try{s=await(await fetch("/api/stato?dalla="+righe)).json()}catch(e){$("#fase").textContent="Smista Foto è chiuso. Riaprilo dal suo file di avvio.";return}
-  S=s;$("#ver").textContent="versione "+s.versione+" · "+s.modello;
-  $("#semaforo").className="semaforo "+s.semaforo;
-  $("#conto").textContent={verde:"MEGA collegato",giallo:"Controllo MEGA…",rosso:"MEGA non collegato"}[s.semaforo];
-  $("#contoSub").textContent=s.account||(s.semaforo=="rosso"?"ricontrollo da solo ogni 15 secondi":"");
-  $("#problema").innerHTML=s.problema&&(!s.account||s.problema.startsWith("Non riesco a preparare"))?`<div class="problema">${esc(s.problema)}<br><button id="bRiprova">Riprova</button></div>`:"";
-  if($("#bRiprova"))$("#bRiprova").onclick=()=>api("/api/collega").catch(avvisa);
-  $("#nG").textContent=s.persone.giocatori;$("#nS").textContent=s.persone.staff;
-  $("#deboli").innerHTML=s.persone.deboli.length?`<div class="avviso">Riconoscimento debole per: <b>${s.persone.deboli.map(esc).join(", ")}</b>. Apri «Elenco delle persone» qui sotto e premi «Primi piani…» accanto al nome.</div>`:"";
-  const a=s.attivita, occ=a.in_corso||!s.account;
-  for(const b of ["#bImpara","#bReimpara","#bControlla","#bSmista","#bProva","#bSfoglia"])$(b).disabled=occ;
-  const r=s.registro;
-  $("#fase").textContent=a.in_corso?(r.fase||"Al lavoro…"):"In attesa";
-  $("#barra").style.width=a.in_corso&&r.n?(100*r.i/r.n)+"%":"0";
-  $("#det").textContent=a.in_corso&&r.n?`${r.i} di ${r.n}`+(r.dettaglio?" · "+r.dettaglio:""):"";
-  const box=$("#registro"),giu=box.scrollTop+box.clientHeight>=box.scrollHeight-30;
-  for(const x of r.righe)box.insertAdjacentHTML("beforeend",`<p class="${x.tipo}"><span class="ora">${x.ora}</span><span>${esc(x.testo)}</span></p>`);
-  righe=r.totale_righe;if(giu&&r.righe.length)box.scrollTop=box.scrollHeight;
-  const chiave=JSON.stringify([a.tipo,a.in_corso,a.lavoro,!!a.risultato,a.errore]);
-  if(chiave!==ultimoEsito){ultimoEsito=chiave;mostraEsito(a)}
-  mostraLavori(s.lavori);
-  mostraElenco(s);
-}
-let chiaveElenco="";
-function mostraElenco(s){
-  const k=JSON.stringify([s.elenco,s.esclusi,s.attivita.in_corso]);if(k===chiaveElenco)return;chiaveElenco=k;
-  $("#elencoTit").textContent=`Elenco delle persone (${s.elenco.length})`+(s.esclusi.length?` · ${s.esclusi.length} escluse`:"");
-  const occ=s.attivita.in_corso||!s.account;
-  let h=`<table><tr><th>Nome</th><th>Foto utili</th><th></th></tr>`+s.elenco.map(p=>`<tr><td><b>${esc(p.nome)}</b><br><span class="nota">${p.tipo}</span></td>
-    <td class="${p.foto<4?"debole":""}">${p.foto}${p.foto<4?" · debole":""}${p.primi_piani?`<br><span class="nota">${p.primi_piani} primi piani</span>`:""}</td>
-    <td><div class="az"><input type="file" accept="image/*" multiple hidden data-pp="${esc(p.nome)}"><button type="button" ${occ?"disabled":""} onclick="this.previousElementSibling.click()">Primi piani…</button>
-    ${p.primi_piani?`<button ${occ?"disabled":""} data-re="${esc(p.nome)}">Reimpara</button>`:""}
-    <button ${occ?"disabled":""} data-ex="${esc(p.nome)}">Escludi</button></div></td></tr>`).join("")+"</table>";
-  if(s.esclusi.length)h+=`<p class="nota" style="margin-top:12px">Escluse: `+s.esclusi.map(n=>`${esc(n)} <button ${occ?"disabled":""} data-in="${esc(n)}">Includi</button>`).join(" ")+"</p>";
-  $("#elenco").innerHTML=h;
-  $("#elenco").querySelectorAll("[data-ex]").forEach(b=>b.onclick=()=>{if(confirm(`Escludo ${b.dataset.ex}? Lo script non lo considererà più una persona (le cartelle su MEGA non vengono toccate).`))api("/api/escludi",{nome:b.dataset.ex,escluso:true}).catch(avvisa)});
-  $("#elenco").querySelectorAll("[data-in]").forEach(b=>b.onclick=()=>api("/api/escludi",{nome:b.dataset.in,escluso:false}).catch(avvisa));
-  $("#elenco").querySelectorAll("[data-re]").forEach(b=>b.onclick=()=>api("/api/impara",{solo:[b.dataset.re]}).catch(avvisa));
-  $("#elenco").querySelectorAll("[data-pp]").forEach(inp=>inp.onchange=async()=>{
-    const nome=inp.dataset.pp;let ok=0;
-    for(const f of inp.files){const r=await fetch(`/api/primopiano?persona=${encodeURIComponent(nome)}&nome=${encodeURIComponent(f.name)}`,{method:"POST",body:f});
-      if(r.ok)ok++;else alert((await r.json()).errore)}
-    if(ok&&confirm(`${ok} primi piani aggiunti per ${nome}. Lo reimparo adesso?`))api("/api/impara",{solo:[nome]}).catch(avvisa)});
-}
-let REGOLE=[];
-function regole(p){if(!p.regole||!p.regole.length)return"";REGOLE=p.regole;
-  return `<div style="margin-top:12px"><b>Regole proposte</b><p class="nota" style="margin:4px 0 8px">Lo script ha provato molte combinazioni (somiglianza, grandezza del volto, nitidezza) per avvicinarsi al vostro criterio «almeno un po' protagonista». In alto: trova più foto; in basso: sbaglia meno. Scegline una: vale dalla prossima analisi.</p>
-  <table><tr><th>Regola</th><th>Proposte</th><th>Precisione</th><th>Lavoro trovato</th><th></th></tr>`+
-  p.regole.map((r,i)=>`<tr style="${r.attuale?"font-weight:700":""}"><td>${esc(r.descrizione)}${r.attuale?" <span class='nota'>(in uso)</span>":""}${(r.per_partita||[]).length?`<br><span class="nota">`+r.per_partita.map(x=>`${esc(x.partita)}: ${x.precisione}% · ${x.copertura}%`).join(" — ")+"</span>":""}</td><td>${r.proposte}</td><td>${r.precisione}%</td><td>${r.copertura}%</td><td>${r.attuale?"":`<button data-regola="${i}">Usa questa</button>`}</td></tr>`).join("")+"</table></div>"}
-document.addEventListener("click",e=>{const b=e.target.closest("[data-regola]");if(!b)return;const r=REGOLE[+b.dataset.regola];
-  if(confirm("Uso questa regola dalla prossima analisi?\n\n"+r.descrizione))api("/api/regola",r).then(()=>{b.textContent="In uso ✓";b.disabled=true}).catch(avvisa)});
-function taratura(p){if(!p.taratura)return"";
-  return `<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">Taratura: cosa succederebbe con soglie diverse</summary>
-  <p class="nota" style="margin:6px 0">Solo la somiglianza, senza regola del protagonista. Soglia più alta = meno errori ma meno foto trovate.</p>
-  <table><tr><th>Soglia</th><th>Proposte</th><th>Precisione</th><th>Lavoro trovato</th></tr>`+
-  p.taratura.map(r=>`<tr style="${Math.abs(r.soglia-p.soglia_attuale)<0.001?"font-weight:700":""}"><td>${r.soglia.toFixed(2)}</td><td>${r.proposte}</td><td>${r.precisione}%</td><td>${r.copertura}%</td></tr>`).join("")+"</table></details>"}
-function tilesProva(p){return `<div class="tiles"><div><b>${p.precisione}%</b>precisione (giuste sulle proposte)</div><div><b>${p.copertura}%</b>del lavoro a mano trovato da solo</div><div><b>${p.sbagliate}</b>assegnazioni sbagliate</div><div><b>${p.giuste}</b>giuste su ${p.a_mano} fatte a mano</div><div><b>${p.tra_i_dubbi}</b>altre trovate tra i dubbi</div><div><b>${p.mancate}</b>mancate del tutto</div></div>`+regole(p)+taratura(p)}
-function mostraEsito(a){
-  const e=$("#esito");
-  if(a.in_corso||!a.tipo){e.innerHTML="";return}
-  if(a.errore){e.innerHTML=`<div class="problema">Interrotto: ${esc(a.errore)}</div>`;return}
-  if(a.tipo=="smista"&&a.lavoro)e.innerHTML=`<div class="riga"><a href="/l/${encodeURIComponent(a.lavoro)}"><button class="primo">Apri la revisione →</button></a></div>`;
-  else if(a.tipo=="calibra"&&a.risultato)e.innerHTML=`<b>Regole calcolate su ${a.risultato.partite.length} partite</b>`+regole(a.risultato)+`<p class="nota">Sotto ogni regola: precisione · lavoro trovato in ciascuna partita. Meglio una regola che va bene su tutte.</p>`;
-  else if(a.tipo=="prova"&&a.risultato)e.innerHTML="<b>Risultato della prova</b>"+tilesProva(a.risultato)+`<div class="riga"><a href="/l/${encodeURIComponent(a.lavoro)}"><button class="primo">Vedi i volti: verdi giusti, rossi no →</button></a></div><p class="nota">Dettaglio per persona nel file prova.csv dentro la cartella lavori/${esc(a.lavoro)}.</p>`;
-  else e.innerHTML="";
-}
-let chiaveLavori="";
-function mostraLavori(L){
-  if(!L.length)return;
-  const k=JSON.stringify([L.map(l=>[l.id,l.copiato,!!l.prova]),S&&S.attivita.in_corso]);if(k===chiaveLavori)return;chiaveLavori=k;
-  const nProve=new Set(L.filter(l=>l.prova).map(l=>l.evento)).size;
-  $("#lavori").innerHTML=`<table><tr><th>Partita</th><th>Data</th><th>Foto</th><th></th></tr>`+L.map(l=>{
-    let st;if(l.prova)st=`<a href="/l/${encodeURIComponent(l.id)}"><span class="etich prova">Prova · ${l.prova.precisione}% · vedi →</span></a>`;
-    else if(l.copiato)st=`<span class="etich fatto">Copiata</span>`;
-    else st=`<a href="/l/${encodeURIComponent(l.id)}"><span class="etich da">Da rivedere →</span></a>`;
-    return `<tr><td>${esc(l.evento)}<br><span class="nota">${esc(l.competizione)}</span></td><td>${esc(l.creato)}</td><td>${l.foto}</td><td>${st}</td></tr>`}).join("")+"</table>"+
-    (nProve>=2?`<div class="riga"><button class="primo" id="bCalibra" ${S&&S.attivita.in_corso?"disabled":""}>Calcola la regola su tutte le prove (${nProve} partite)</button></div>`:
-     `<p class="nota" style="margin-top:10px">Con prove su almeno due partite diverse puoi calcolare una regola valida per tutte.</p>`);
-  if($("#bCalibra"))$("#bCalibra").onclick=()=>api("/api/calibra").catch(avvisa);
-}
-async function apri(percorso){
-  $("#sfoglia").hidden=false;$("#cartelle").innerHTML='<div class="vuota">Apro la cartella su MEGA…</div>';$("#sfogliaAz").innerHTML="";
-  let r;try{r=await api("/api/sfoglia",{percorso})}catch(e){$("#cartelle").innerHTML=`<div class="vuota">${esc(e.message)}</div>`;return}
-  const parti=r.percorso.split("/").filter(Boolean);
-  $("#briciole").innerHTML=(r.su!==null?`<a data-p="${esc(r.su)}">↑ indietro</a> · `:"")+parti.map((p,i)=>`<span>${esc(p)}</span>`).join(" › ");
-  $("#briciole").querySelectorAll("a").forEach(a=>a.onclick=()=>apri(a.dataset.p));
-  const ord=[...r.cartelle].sort((a,b)=>(b=="Foto")-(a=="Foto")||a.localeCompare(b,"it",{numeric:true}));
-  $("#cartelle").innerHTML=ord.length?ord.map(c=>`<div data-c="${esc(c)}" class="${c=="Foto"?"foto":""}">📁 ${esc(c)}</div>`).join(""):'<div class="vuota">Nessuna sottocartella.</div>';
-  $("#cartelle").querySelectorAll("[data-c]").forEach(d=>d.onclick=()=>apri(r.percorso.replace(/\/$/,"")+"/"+d.dataset.c));
-  if(r.selezionabile){
-    $("#sfogliaAz").innerHTML=`<button class="primo" id="bUsa">Usa questa cartella</button> <span class="nota">${r.foto} foto qui`+(r.cartelle.length?` + sottocartelle dei fotografi`:"")+`</span>`;
-    $("#bUsa").onclick=()=>{$("#percorso").value=r.percorso;$("#sfoglia").hidden=true;controlla()}}
-  else if(parti.length<=1)$("#sfogliaAz").innerHTML='<span class="nota">Partite: <b>MATCH</b> › competizione › partita › <b>Foto</b>. Allenamenti: <b>ALLENAMENTI</b> › mese › <b>giorno</b>.</span>';
-  else if(r.cartelle.includes("Foto"))$("#sfogliaAz").innerHTML='<span class="nota">Apri la cartella <b>Foto</b> per selezionarla.</span>';
-}
-$("#bSfoglia").onclick=()=>apri("");
-$("#bImpara").onclick=()=>api("/api/impara",{tutti:false}).catch(avvisa);
-$("#bReimpara").onclick=()=>{if(confirm("Reimparo tutti i volti da zero? Ci vorrà un po'."))api("/api/impara",{tutti:true}).catch(avvisa)};
-let C=null;
-$("#bControlla").onclick=()=>controlla();
-async function controlla(){const b=$("#bControlla");b.textContent="Controllo…";$("#dest").hidden=true;
-  try{C=await api("/api/controlla",{percorso:$("#percorso").value,prova:true});
-    $("#destOrig").textContent=C.sorgente;$("#comp").value=C.competizione;$("#evento").value=C.evento;$("#esistente").value=C.esistente;aggDest();$("#dest").hidden=false;
-    if(!C.competizione)alert("Non riconosco competizione e partita dal percorso: scrivile tu nei due campi.");
-    else if(C.unica&&!C.evento)alert("Non trovo la data nel percorso: scrivila nel campo Data, es. 20261102.");
-    $("#dest").scrollIntoView({behavior:"smooth",block:"nearest"});
-  }catch(e){avvisa(e)}finally{b.textContent="Controlla"}}
-function aggDest(){const u=C&&C.unica,e=($("#evento").value||"?").toUpperCase();
-  $("#destPercorso").textContent=u?`PLAYERS / <NOME> / ${($("#comp").value||"?").toUpperCase()}   (file: ${e}_nomefile.jpg)`:"PLAYERS / <NOME> / "+($("#comp").value||"?").toUpperCase()+" / "+e;
-  $("#lblEvento").textContent=u?"Data (va davanti al nome dei file)":"Partita";
-  $("#provaEsistente").hidden=!!u;
-  $("#notaProvaUnica").hidden=!u}
-$("#comp").oninput=aggDest;$("#evento").oninput=aggDest;
-$("#percorso").oninput=()=>{$("#dest").hidden=true};
-$("#bSmista").onclick=()=>api("/api/smista",{sorgente:C.sorgente,competizione:$("#comp").value,evento:$("#evento").value}).catch(avvisa);
-$("#bProva").onclick=()=>api("/api/prova",{sorgente:C.sorgente,competizione:$("#comp").value,evento:$("#evento").value,esistente:$("#esistente").value}).catch(avvisa);
-$("#bEsci").onclick=async()=>{if(!confirm("Chiudo Smista Foto?"))return;await api("/api/esci");document.body.innerHTML='<main><section class="carta"><h2>Smista Foto è chiuso.</h2><p class="nota">Puoi chiudere questa finestra e quella del Terminale.</p></section></main>'};
-aggiorna();setInterval(aggiorna,1000);
-</script></body></html>"""

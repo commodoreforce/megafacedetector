@@ -1,207 +1,123 @@
 # Smista Foto · Cesena FC
 
-Versione **2.3.1** · 3 novembre 2026 (il numero compare in alto nel menu e nella pagina di revisione).
+Versione **3.0** · 3 novembre 2026
 
-Riconosce giocatori e staff nelle foto caricate su MEGA e le copia nelle loro cartelle:
+Smista Foto guarda le foto caricate dai fotografi su MEGA, riconosce giocatori e staff e
+copia ogni foto nella cartella personale di chi ne è protagonista:
 
 ```
-2026-27/MATCH/SERIEBKT/G10_Sudtirol_Cesena_1_1/Foto   (dove caricano i fotografi)
-        ↓
-2026-27/PLAYERS/CIOFI/SERIE BKT/G10_SUDTIROL_CESENA/
-2026-27/PLAYERS/_STAFF/DIAMANTI/SERIE BKT/G10_SUDTIROL_CESENA/
+2026-27/MATCH/SERIEBKT/G10_Sudtirol_Cesena_1_1/Foto       →  PLAYERS/CIOFI/SERIE BKT/G10_SUDTIROL_CESENA/
+2026-27/ALLENAMENTI/2026_11_Novembre/20261102              →  PLAYERS/CIOFI/ALLENAMENTI/20261102_IMG_5169.jpg
 ```
 
-Tutto gira sul computer: le foto non vengono mandate a nessun servizio esterno.
-**Non copia mai niente senza la vostra conferma** nella pagina di revisione.
+Gira tutto sul computer: le foto non vengono mandate a nessun servizio esterno.
+**Non copia niente senza la tua conferma**, e prima di copiare mostra sempre il riepilogo.
 
-## Sicurezza del cloud
+La guida completa è dentro l'app, alla voce **Aiuto**.
 
-MEGA è l'archivio storico del club, senza altre copie. Per questo lo script ha regole
-rigide scritte nel codice (`smistafoto/mega.py`), controllate prima di ogni comando:
+## Installazione (una volta sola)
+
+| | Mac | Windows |
+|---|---|---|
+| 1 | Scarica la cartella (da GitHub: **Code › Download ZIP**, oppure `git clone`) | uguale |
+| 2 | Doppio clic su **`Installa_Mac.command`**. Se il Mac lo blocca: clic destro › **Apri** › **Apri** | Doppio clic su **`Installa_Windows.bat`** |
+| 3 | Segui le istruzioni in giallo | uguale |
+
+L'installazione guidata controlla e installa quello che manca, in sei passi:
+Python (3.10 o più recente), MEGAcmd (il programma ufficiale di MEGA), i componenti di
+Smista Foto, l'icona **Smista Foto** sulla Scrivania e l'accesso a MEGA. Si può rilanciare
+quando si vuole: rifà solo quello che manca. Il registro è nel file `installazione.log`.
+
+Al primo avvio l'app completa la configurazione: scarica il modello di riconoscimento
+(circa 260 MB) e impara i volti dalle cartelle `PLAYERS` e `PLAYERS/_STAFF` (10-20 minuti).
+
+## Uso
+
+Doppio clic su **Smista Foto** sulla Scrivania. Si apre una finestra nera, da **lasciare
+aperta** (è il motore dell'app), e poi l'app.
+
+1. **Smista foto** › scegli la cartella su MEGA › controlla la destinazione › **Avvia l'analisi**.
+2. Puoi fare altro: quando ha finito compare un avviso.
+3. **Revisione**: decidi i volti da verificare (tasti `1` `2` `3`, `0`), escludi con un clic
+   quello che non va, poi **Controlla e copia** › riepilogo › **Copia su MEGA**.
+
+Le revisioni non finite restano in **Revisioni** e si riprendono da dove le avevi lasciate.
+
+## Aggiornamento
+
+Doppio clic su **`Aggiorna_Mac.command`** o **`Aggiorna_Windows.bat`**. Le scelte fatte
+nell'app (`dati/`), le analisi (`lavori/`) e i primi piani (`primi_piani/`) restano.
+
+## Sicurezza dell'archivio
+
+MEGA è l'archivio storico del club, senza altre copie. Smista Foto ha regole rigide scritte
+nel programma (`smistafoto/mega.py`), controllate prima di ogni comando:
 
 - **Usa solo comandi di lettura e di creazione**: `whoami`, `ls`, `find`, `get`, `preview`,
-  `mkdir`, `cp`. Qualsiasi altro comando di MEGAcmd (cancellare, spostare, caricare,
-  sincronizzare, condividere...) viene rifiutato prima di partire.
-- **Non cancella, non sposta e non rinomina nulla su MEGA.** Non esiste nessuna
-  funzione che lo faccia.
-- **Non sovrascrive mai**: prima di ogni copia verifica che il file non esista già.
-  Se esiste, o se la verifica non riesce, la copia non si fa.
-- **Scrive solo dentro `PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>/`**, oppure direttamente in
-  `PLAYERS/<NOME>/ALLENAMENTI/` (le «cartelle uniche» elencate in `config.json`, senza
-  sottocartelle). Le cartelle `MATCH` e `ALLENAMENTI` dei fotografi vengono solo lette.
+  `mkdir`, `cp`. Qualsiasi altro comando di MEGAcmd viene rifiutato prima di partire.
+- **Non cancella, non sposta e non rinomina nulla su MEGA.** Non esiste nessuna funzione che lo faccia.
+- **Non sovrascrive mai**: prima di ogni copia verifica che il file non esista già; nel dubbio non copia.
+- **Scrive solo in `PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>/`** oppure direttamente in
+  `PLAYERS/<NOME>/ALLENAMENTI/` (le «cartelle uniche» di `config.json`, senza sottocartelle).
+  Le cartelle dei fotografi vengono solo lette.
 - Percorsi con `..` o caratteri jolly (`*`, `?`) sono rifiutati.
+- L'interfaccia risponde solo da questo computer (`127.0.0.1`).
 
-Il file `tests/test_sicurezza.py` prova tutte queste regole senza toccare MEGA:
-`python3 tests/test_sicurezza.py` deve finire con **TUTTO OK**.
+`python3 tests/test_sicurezza.py` prova tutte queste regole senza toccare MEGA e deve finire con
+**TUTTO OK**.
 
-Una cosa resta fuori dal controllo dello script: chi usa MEGAcmd a mano, nella sua
-finestra, ha tutti i permessi dell'account. Nella finestra di MEGAcmd non va scritto
-nessun comando oltre a `login`.
-
----
-
-## 1. Installazione (una volta sola)
-
-**Servono due programmi:**
-
-1. **Python** da https://www.python.org/downloads/
-   Su Windows, durante l'installazione spunta **"Add python.exe to PATH"**.
-2. **MEGAcmd** da https://mega.io/cmd (lo strumento di MEGA da riga di comando).
-
-**Poi colleghi MEGAcmd all'account del club:** apri MEGAcmd, scrivi
-`login email@delclub.it` e inserisci la password quando la chiede. Resta collegato
-anche dopo aver riavviato il computer.
-
-**Infine installi lo script:**
-- **Windows:** doppio clic su `Installa_Windows.bat`
-- **Mac:** doppio clic su `Installa_Mac.command`.
-  La prima volta il Mac può bloccarlo: clic destro sul file → **Apri** → **Apri**.
-
-## 2. Come si usa
-
-Doppio clic su `Avvia_Mac.command` (o `Avvia_Windows.bat`). Si apre una finestra del
-Terminale **da lasciare aperta** e, dopo un attimo, l'app nel browser
-(indirizzo `http://127.0.0.1:8765`, raggiungibile solo da questo computer).
-
-In alto c'è il numero di versione e il **semaforo di MEGA**: verde = collegato,
-giallo = controllo in corso, rosso = non collegato (in quel caso l'app ricontrolla da
-sola ogni 15 secondi, e nel registro mostra la risposta di MEGAcmd).
-A destra, **«Cosa sta facendo»** mostra la fase, una barra di avanzamento e il registro
-di ogni passo. Lo stesso registro compare anche nel Terminale.
-
-### Prima volta: imparare i volti
-
-Premi **«Impara i volti nuovi»**. Lo script legge le cartelle in `PLAYERS` e
-`PLAYERS/_STAFF`, prende circa 30 foto per persona (soprattutto dal MEDIADAY) e impara
-chi è il proprietario di ogni cartella. Su MEGA legge soltanto; scarica solo anteprime
-leggere e le cancella subito.
-
-Alla fine può segnalare:
-- **riconoscimento debole**: persone con poche foto utili (succede con lo staff).
-  Apri **«Elenco delle persone»**, premi **«Primi piani…»** accanto al nome, scegli
-  3-5 foto in cui si vede bene il volto e confermi di reimpararlo.
-- **cartelle che non sono persone** (es. `00VARIE`): nell'elenco premi **«Escludi»**.
-  Su MEGA non cambia nulla, lo script semplicemente la ignora.
-- **persone che si assomigliano troppo**: di solito una cartella contiene soprattutto
-  foto di un altro. Va controllata.
-
-Quando arriva qualcuno di nuovo, crea la sua cartella su MEGA come sempre e premi di
-nuovo «Impara i volti nuovi»: impara solo i nuovi.
-
-### Dopo ogni partita
-
-1. In **«Smista una partita»** premi **«Sfoglia le cartelle su MEGA…»**, entra nella
-   competizione e nella partita, apri la cartella **Foto** e premi **«Usa questa cartella»**.
-   (Si può anche incollare il percorso a mano.)
-2. Controlla la destinazione proposta (es. `PLAYERS / <NOME> / SERIE BKT / G10_SUDTIROL_CESENA`)
-   e premi **«Avvia lo smistamento»**. Lo script scarica e analizza una foto alla volta.
-3. Alla fine premi **«Apri la revisione»**:
-   - **Da verificare**: volti incerti. Clicca "È CIOFI?" se è giusto, oppure scegli
-     dall'elenco. Quelli lasciati su "non copiare" non vengono copiati.
-   - **Riconosciute**: raggruppate per persona. Clicca una miniatura per escluderla.
-     Passando sopra con il mouse vedi la foto intera.
-   - **Foto senza nessuno riconosciuto**: se vuoi le assegni a mano.
-4. Se vuoi essere sicuro, premi prima **«Simula (non copia nulla)»**: lo script fa tutti
-   i controlli della copia vera ma su MEGA legge soltanto, e mostra per ogni persona
-   la cartella di destinazione, quante foto verrebbero copiate, quante saltate perché
-   già presenti, quali cartelle verrebbero create e se qualcosa verrebbe bloccato dalle
-   regole di sicurezza. Il dettaglio foto per foto è anche in `lavori/<partita>/simulazione.csv`.
-5. Premi **«Copia nelle cartelle»**. La copia avviene dentro MEGA.
-
-Le analisi restano in **«Analisi recenti»**: si può riaprire la revisione in un secondo momento.
-
-**Nomi dei file:** se la foto è nella sottocartella di un fotografo, il nome diventa
-`Rossi_DSC_0412.jpg`, così due fotografi con lo stesso nome file non si sovrascrivono.
-Le foto già presenti nella cartella del giocatore vengono saltate.
-
-**Protagonisti e comparse:** si smistano solo le foto in cui la persona è almeno un po'
-protagonista. Per ogni volto lo script misura quanto è grande (rispetto alla foto e al
-volto più grande) e quanto è a fuoco. Chi è riconosciuto ma è una comparsa finisce nella
-sezione chiusa **«Comparse»** della revisione e non viene copiato, a meno di cliccarlo.
-La regola si sceglie dalla prova pilota (tabella **«Regole proposte»**, pulsante **«Usa questa»**).
-Con prove su almeno due partite, in «Analisi recenti» compare **«Calcola la regola su tutte le
-prove»**: la regola viene scelta perché funzioni su tutte, e per ognuna si vedono i numeri.
-
-**Nomi nel file:** se il fotografo ha scritto un cognome nel nome del file
-(es. `775A5531.Mangraviti.jpg`) e il volto non è stato riconosciuto, la foto compare tra
-quelle **da verificare** con quel nome come suggerimento. Il nome nel file non basta mai
-da solo per copiare, perché a volte è sbagliato.
-
-Ogni volto confermato in revisione migliora il riconoscimento per la volta dopo.
-
-### Allenamenti
-
-I fotografi caricano in `2026-27 / ALLENAMENTI / <mese> / <giorno>` (es. `2026_11_Novembre / 20261102`).
-Con **«Sfoglia»** si apre `ALLENAMENTI`, poi il mese, poi il giorno, e si preme **«Usa questa cartella»**.
-
-A differenza delle partite, le foto vanno tutte in **una cartella unica per persona**:
-`PLAYERS / CIOFI / ALLENAMENTI`, senza sottocartella per data. Poiché in quella cartella si
-accumulano mesi di allenamenti e nomi come `IMG_5169.jpg` si ripetono, lo script mette **la data
-davanti al nome**: `20261102_IMG_5169.jpg` (o `20261102_Rossi_IMG_5169.jpg` se la foto era nella
-sottocartella di un fotografo). Una foto già smistata a mano con il nome originale viene
-riconosciuta (stesso nome **e** stessa dimensione) e saltata; una foto omonima di un altro giorno
-non viene mai toccata.
-
-Le cartelle uniche sono elencate in `config.json` → `cartelle_uniche` (oggi solo `ALLENAMENTI`).
-Solo per queste lo script può scrivere direttamente in `PLAYERS/<NOME>/<CARTELLA>/`, senza
-sottocartelle.
-
-### Prova pilota
-
-Dopo «Controlla», apri **«Prova su una partita già smistata a mano»** e premi
-**«Fai la prova»**. Lo script analizza la partita e confronta il risultato con le cartelle
-fatte a mano, **senza copiare nulla**: mostra precisione, assegnazioni sbagliate e
-mancate. Trova da solo la cartella della partita e ignora i volti imparati proprio da
-quella partita, così la prova è onesta. Il dettaglio per persona è in
-`lavori/<partita>/prova.csv`.
+Resta fuori dal controllo dello script solo la finestra di MEGAcmd: da lì si hanno tutti i
+permessi dell'account. Nella finestra di MEGAcmd non va scritto nessun comando oltre a `login`.
 
 ## Il modello di riconoscimento
 
-- **I volti si trovano** con YuNet (OpenCV, licenza Apache 2.0), incluso nel pacchetto.
-- **I volti si riconoscono** con **AuraFace v1** (rete ResNet100 di tipo ArcFace, licenza
-  Apache 2.0, pensata per l'uso commerciale): https://huggingface.co/fal/AuraFace-v1.
-  Si usa solo il file di riconoscimento (`glintr100.onnx`); gli altri file di quel
-  repository non si usano perché la loro licenza non è indicata.
-- Il modello (circa 260 MB) **si scarica da solo al primo avvio** e resta nella cartella
-  `modelli/`. Tutto gira sul computer: le foto non vengono mandate a nessun servizio.
-- Con `"modello": "sface"` in `config.json` si torna al modello precedente, più leggero
-  ma molto meno preciso. Le impronte dei due modelli sono salvate in file separati.
+- I volti si **trovano** con YuNet (OpenCV, Apache 2.0), incluso nel pacchetto.
+- I volti si **riconoscono** con **AuraFace v1** (ResNet100 di tipo ArcFace, Apache 2.0,
+  pensato per l'uso commerciale): https://huggingface.co/fal/AuraFace-v1. Si usa solo il file
+  di riconoscimento (`glintr100.onnx`); gli altri file di quel repository non hanno una licenza
+  indicata e non si usano. Si scarica da solo al primo avvio in `modelli/`.
+- Una foto va a una persona solo se lì è **almeno un po' protagonista** (volto tra i più grandi
+  della foto, non minuscolo, abbastanza a fuoco). La regola predefinita è stata scelta con le
+  prove sulle partite; si può ritarare da **Prove e regole**.
 
-## 3. Impostazioni (`config.json`)
+## Impostazioni
 
-Le scelte fatte dall'app (la regola scelta con «Usa questa») vanno in
-`dati/impostazioni_locali.json`, solo su quel computer, e hanno la precedenza su `config.json`.
-Non modificare `config.json` a mano: un aggiornamento con `git pull` si bloccherebbe.
+Non modificare `config.json` a mano: le scelte fatte dall'app vanno in
+`dati/impostazioni_locali.json`, solo su quel computer, e hanno la precedenza.
 
-| Voce | A cosa serve |
+| Voce di `config.json` | A cosa serve |
 |---|---|
-| `cartella_partite`, `cartella_allenamenti` | dove caricano i fotografi (informativo: «Sfoglia» parte dalla stagione) |
+| `cartella_giocatori`, `cartella_staff` | dove sono le cartelle personali (da cambiare a ogni stagione) |
+| `cartella_partite`, `cartella_allenamenti` | dove caricano i fotografi |
 | `cartelle_uniche` | cartelle senza sottocartella per evento, es. `["ALLENAMENTI"]` |
-| `cartella_giocatori`, `cartella_staff` | dove sono le cartelle personali (cambiare a ogni stagione) |
-| `competizioni` | come si traducono i nomi: `SERIEBKT` → `SERIE BKT`, ecc. |
+| `competizioni` | come si traducono i nomi: `SERIEBKT` › `SERIE BKT`, ecc. |
 | `nome_partita` | maiuscolo e senza risultato (`G10_SUDTIROL_CESENA`) |
 | `prefisso_fotografo` | aggiunge il nome della sottocartella del fotografo al file |
-| `protagonista` | `relativa_min`, `frazione_min`, `nitidezza_min`: quando un volto conta come protagonista. Di solito si imposta dalla prova con «Usa questa» |
-| `modello` | `auraface` (predefinito) oppure `sface` |
-| `soglie` | per modello, es. `"soglie": {"auraface": {"soglia_sicura": 0.45}}`. `soglia_sicura`: più alta = meno errori ma più foto da verificare; `soglia_dubbia`: sotto, un volto viene ignorato; `margine`: distacco minimo dal secondo candidato. La tabella «Taratura» della prova dice quale soglia conviene |
-| `modalita` | sempre `megacmd` (`cartella_locale` serve solo per i test) |
+| `modello` | `auraface` (predefinito) oppure `sface` (più leggero, meno preciso) |
+| `soglie`, `protagonista` | la regola predefinita; di solito si cambia da «Prove e regole» |
 
-## 4. Privacy
+## Privacy
 
-- Le impronte dei volti (numeri, non foto) sono salvate solo in `dati/`, e solo per
-  giocatori e staff.
-- I volti non riconosciuti (avversari, tifosi) vengono scartati subito, senza salvare nulla.
-- Le foto scaricate per l'analisi vengono cancellate dopo la copia.
+- Le «impronte» dei volti sono numeri, non foto, e restano solo in `dati/`, solo per giocatori e staff.
+- I volti non riconosciuti (avversari, tifosi) vengono scartati subito.
+- Le foto scaricate per l'analisi vengono cancellate subito dopo; restano solo miniature in `lavori/`.
+- `dati/`, `lavori/` e `primi_piani/` sono esclusi dal repository.
 
-## 5. Problemi frequenti
+## Struttura
 
-- **"Non trovo MEGAcmd"**: installalo da https://mega.io/cmd.
-- **"MEGAcmd non è collegato"**: apri MEGAcmd e fai `login`.
-- **La pagina non si apre**: apri nel browser `http://127.0.0.1:8765`.
-- **Lento**: è normale alla prima analisi di una partita grande; il computer può essere usato per altro.
+```
+smista.py                 avvio
+smistafoto/mega.py        accesso a MEGA con le regole di sicurezza
+smistafoto/volti.py       riconoscimento dei volti
+smistafoto/flussi.py      imparare, analizzare, simulare, copiare, provare
+smistafoto/app.py         server locale dell'interfaccia
+smistafoto/web/           interfaccia (HTML, CSS, JavaScript, guida)
+tests/test_sicurezza.py   verifica delle regole di sicurezza
+```
 
 ## Versioni
 
+- **3.0** (3 novembre 2026): interfaccia ridisegnata con procedura guidata (cartella, destinazione, analisi, revisione), prima configurazione nell'app, revisione da tastiera con anteprima grande e volto evidenziato, annulla, scelte salvate da sole, copia sempre preceduta dal riepilogo, guida integrata con spiegazioni «?», tema chiaro/scuro; installazione e aggiornamento guidati per Mac e Windows con icona sulla Scrivania; regola del protagonista predefinita; corretto il conteggio «già presenti» dopo la copia.
 - **2.3.1** (3 novembre 2026): la regola scelta con «Usa questa» si salva in `dati/impostazioni_locali.json` e non più in `config.json`, così `git pull` non si blocca.
 - **2.3** (3 novembre 2026): smistamento degli allenamenti nella cartella unica PLAYERS/<NOME>/ALLENAMENTI, con la data davanti al nome dei file; «Sfoglia» parte dalla stagione.
 - **2.2** (3 novembre 2026): «Calcola la regola su tutte le prove»: la regola del protagonista si sceglie su più partite insieme, con i numeri di ciascuna.

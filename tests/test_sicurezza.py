@@ -167,8 +167,11 @@ for nome in os.listdir(cartella):
             if c not in mega.COMANDI_CONSENTITI:
                 print(f"ERRORE: {nome} usa il comando {c}")
                 errori += 1
-        if "subprocess" in testo and nome != "mega.py":
+        if "subprocess" in testo and nome not in ("mega.py", "finestra.py"):
             print(f"ERRORE: {nome} esegue comandi esterni")
+            errori += 1
+        if nome == "finestra.py" and "mega" in testo.lower().replace("non ha niente a che fare con mega", ""):
+            print("ERRORE: finestra.py deve solo aprire il browser, non usare MEGA")
             errori += 1
         # operazioni su file del COMPUTER (mai su MEGA, che si raggiunge solo da mega.py):
         # flussi.py cancella le foto temporanee scaricate, volti.py salva il modello scaricato

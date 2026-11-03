@@ -2,28 +2,41 @@
   "modello": "auraface",
   "modalita": "megacmd",
   "radice_locale": "",
-
   "cartella_giocatori": "/2026-27/PLAYERS",
   "cartella_staff": "/2026-27/PLAYERS/_STAFF",
   "cartella_partite": "/2026-27/MATCH",
   "cartella_allenamenti": "/2026-27/ALLENAMENTI",
-  "cartelle_uniche": ["ALLENAMENTI"],
-
+  "cartelle_uniche": [
+    "ALLENAMENTI"
+  ],
   "competizioni": {
     "SERIEBKT": "SERIE BKT",
     "COPPAITALIA": "COPPA_ITALIA",
     "AMICHEVOLI": "AMICHEVOLI_PRE_SEASON",
     "AMICHEVOLIPRESEASON": "AMICHEVOLI_PRE_SEASON"
   },
-  "nome_partita": { "maiuscolo": true, "togli_risultato": true },
+  "nome_partita": {
+    "maiuscolo": true,
+    "togli_risultato": true
+  },
   "prefisso_fotografo": true,
-
   "soglia_sicura": 0.5,
   "soglia_dubbia": 0.36,
   "margine": 0.06,
-
   "foto_per_imparare": 30,
-  "cartelle_preferite_per_imparare": ["MEDIADAY"],
+  "cartelle_preferite_per_imparare": [
+    "MEDIADAY"
+  ],
   "lato_lungo_analisi": 2400,
-  "volto_minimo_px": 40
+  "volto_minimo_px": 40,
+  "soglie": {
+    "auraface": {
+      "soglia_sicura": 0.35
+    }
+  },
+  "protagonista": {
+    "relativa_min": 0.9,
+    "frazione_min": 0.025,
+    "nitidezza_min": 54.0
+  }
 }
