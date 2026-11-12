@@ -14,7 +14,14 @@ if ! git diff --quiet -- config.json; then
   echo "config.json era stato modificato a mano: lo riporto com'era (le scelte dell'app sono in dati/)."
   git checkout -- config.json
 fi
-if git pull --ff-only; then
+git fetch -q origin || { echo "${R}Non riesco a contattare GitHub.${N} Controlla la connessione e riprova."; read -r -p "Premi Invio per chiudere." _; exit 1; }
+if ! git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
+  # la cronologia su GitHub è stata ripulita: allineo questa copia.
+  # dati/, lavori/ e primi_piani/ non fanno parte del repository e restano intatti.
+  echo "La cronologia del repository è stata ripulita: allineo questa copia (le tue cartelle dati, lavori e primi_piani restano)."
+  git reset -q --hard origin/main
+fi
+if git merge -q --ff-only origin/main; then
   DOPO=$(grep -o '"[0-9.]*"' smistafoto/__init__.py | head -1)
   [ -x .venv/bin/python ] && .venv/bin/python -m pip install -r requirements.txt -q
   echo; echo "${V}${G}Fatto: versione ${PRIMA//\"/} → ${DOPO//\"/}.${N} Riavvia Smista Foto per usarla."

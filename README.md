@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **3.2** · 12 novembre 2026
+Versione **3.2.1** · 12 novembre 2026
 
 Smista Foto guarda le foto caricate dai fotografi su MEGA, riconosce giocatori e staff e
 copia ogni foto nella cartella personale di chi ne è protagonista:
@@ -127,6 +127,7 @@ installazione/            icona dell'app (scudetto del Cesena FC) per Mac e Wind
 
 ## Versioni
 
+- **3.2.1** (12 novembre 2026): «Aggiorna» funziona anche quando la cronologia del repository viene ripulita.
 - **3.2** (12 novembre 2026): pagina «Cartelle» con lo stato di ogni partita e allenamento (copiata, già nelle cartelle dei giocatori, da confermare, da smistare) e «Smista» diretto; l'email di MEGA non è più scritta nel programma (si inserisce nell'app e resta sul computer); nomi inventati negli esempi; il test di sicurezza controlla che nel repository non finiscano email.
 - **3.1** (3 novembre 2026): marchio con lo scudetto del Cesena FC nell'app, nell'icona della scheda e nell'icona sulla Scrivania (Mac e Windows; per averla rilanciare l'installazione).
 - **3.0** (3 novembre 2026): interfaccia ridisegnata con procedura guidata (cartella, destinazione, analisi, revisione), prima configurazione nell'app, revisione da tastiera con anteprima grande e volto evidenziato, annulla, scelte salvate da sole, copia sempre preceduta dal riepilogo, guida integrata con spiegazioni «?», tema chiaro/scuro; installazione e aggiornamento guidati per Mac e Windows con icona sulla Scrivania; regola del protagonista predefinita; corretto il conteggio «già presenti» dopo la copia.
