@@ -8,6 +8,7 @@ window.GLOSSARIO = {
   riconosciute: {titolo: "Riconosciute", link: "revisione", testo: "<p>Foto in cui Smista Foto è sicuro di chi sia il protagonista. Verranno copiate nella cartella di quella persona, a meno che tu non le escluda con un clic.</p>"},
   debole: {titolo: "Riconoscimento debole", link: "volti", testo: "<p>Una persona con meno di 4 foto utili nella sua cartella è difficile da riconoscere. Succede soprattutto con lo staff. Aggiungi 3-5 primi piani dalla pagina «Giocatori e staff».</p>"},
   data: {titolo: "La data davanti al nome", link: "allenamenti", testo: "<p>Negli allenamenti tutte le foto di una persona stanno in un'unica cartella, e nomi come IMG_5169.jpg si ripetono tra giorni diversi. Per non confonderle, la foto diventa 20261102_IMG_5169.jpg.</p>"},
+  stati: {titolo: "Stato delle cartelle", link: "cartelle", testo: "<p><b>Copiata con Smista Foto</b>: copiata da questo computer, con data e numeri. <b>Già nelle cartelle dei giocatori</b>: la partita c'è già nelle cartelle di alcuni giocatori, quindi è stata fatta a mano o da un altro computer. <b>Analizzata, da confermare</b>: manca la revisione. <b>Da smistare</b>: nessuna traccia.</p>"},
   precisione: {titolo: "Precisione", link: "prove", testo: "<p>Su 100 foto proposte, quante coincidono con lo smistamento fatto a mano. Lo smistamento a mano su un criterio sfumato come «un po' protagonista» non è perfetto, quindi la precisione reale è di solito un po' più alta.</p>"},
 };
 
@@ -17,7 +18,7 @@ V.aiuto = {
     const voci = [
       ["inizio", "Come funziona"], ["configurazione", "Prima configurazione"], ["mega", "Collegamento a MEGA"],
       ["partite", "Smistare una partita"], ["allenamenti", "Smistare un allenamento"], ["revisione", "La revisione"],
-      ["volti", "Giocatori e staff"], ["sicurezza", "Sicurezza dell'archivio"], ["prove", "Prove e regole"],
+      ["cartelle", "Stato delle cartelle"], ["volti", "Giocatori e staff"], ["sicurezza", "Sicurezza dell'archivio"], ["prove", "Prove e regole"],
       ["problemi", "Problemi frequenti"], ["glossario", "Parole usate nell'app"],
     ];
     el.innerHTML = `<div class="aiuto"><nav aria-label="Indice della guida">${voci.map(([id, t]) => `<a href="#/aiuto/${id}">${t}</a>`).join("")}</nav><article>
@@ -39,7 +40,7 @@ V.aiuto = {
 <p>Il semaforo in alto a destra dice se Smista Foto può usare MEGA: <b>verde</b> collegato, <b>giallo</b> controllo in corso, <b>rosso</b> non collegato. Quando è rosso ricontrolla da solo ogni 15 secondi.</p>
 <h3>Per collegarsi</h3>
 <ol><li>Apri <b>MEGAcmd</b>: dalle Applicazioni sul Mac, dal menu Start su Windows.</li>
-<li>Scrivi <code>login email-del-club</code> e premi Invio.</li>
+<li>Scrivi <code>login</code> seguito dall'email dell'account MEGA del club (es. <code>login nome@dominio.it</code>) e premi Invio. Nella pagina Inizio puoi scrivere l'email e copiare il comando già pronto.</li>
 <li>Scrivi la password e premi Invio. Mentre la scrivi non compare nulla: è normale.</li>
 <li>Il semaforo diventa verde entro qualche secondo. L'accesso resta valido anche dopo aver riavviato il computer.</li></ol>
 <div class="avviso giallo"><b>Nella finestra di MEGAcmd non scrivere altri comandi.</b>Da lì si hanno tutti i permessi sull'archivio del club. Smista Foto invece ha regole di sicurezza proprie, vedi «Sicurezza dell'archivio».</div></section>
@@ -67,6 +68,14 @@ V.aiuto = {
 <h3>Scorciatoie da tastiera</h3>
 <table><tbody><tr><td><kbd>J</kbd></td><td>vai al prossimo volto da verificare</td></tr><tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></td><td>scegli il nome proposto</td></tr><tr><td><kbd>0</kbd></td><td>non copiare</td></tr><tr><td><kbd>Spazio</kbd></td><td>escludi o includi la miniatura</td></tr><tr><td><kbd>V</kbd></td><td>vedi la foto intera con il volto evidenziato</td></tr><tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd></td><td>annulla</td></tr></tbody></table>
 <p>Le scelte si salvano da sole sul computer: puoi chiudere e riprendere la revisione più tardi da «Revisioni».</p></section>
+
+<section id="a-cartelle"><h2>Stato delle cartelle</h2>
+<p>La pagina «Cartelle» elenca tutte le cartelle caricate dai fotografi nella stagione, partite e allenamenti, con il loro stato:</p>
+<dl><dt>Copiata con Smista Foto</dt><dd>Copiata da questo computer: vedi quando, quante foto, per quante persone e da quale computer.</dd>
+<dt>Già nelle cartelle dei giocatori</dt><dd>La partita esiste già nelle cartelle di alcuni giocatori: è stata smistata a mano o da un altro computer. Per gli allenamenti si riconoscono le foto copiate con Smista Foto, che hanno la data davanti al nome.</dd>
+<dt>Analizzata, da confermare</dt><dd>L'analisi è finita ma le foto non sono ancora state copiate: riprendi la revisione.</dd>
+<dt>Da smistare</dt><dd>Nessuna traccia: premi «Smista» e la procedura parte con quella cartella già scelta.</dd></dl>
+<p>«Controlla su MEGA» legge, senza modificare nulla, le cartelle dei fotografi e quelle di una dozzina di giocatori (non tutti, per fare in fretta: circa un minuto). Le copie fatte da questo computer compaiono subito. Ogni computer conserva la sua storia delle copie: quelle fatte da un altro computer risultano «già nelle cartelle dei giocatori».</p></section>
 
 <section id="a-volti"><h2>Giocatori e staff</h2>
 <p>Le persone sono le cartelle in <code>PLAYERS</code> e <code>PLAYERS/_STAFF</code>. Smista Foto impara il volto del proprietario di ogni cartella guardando circa 30 sue foto, soprattutto del Media Day.</p>

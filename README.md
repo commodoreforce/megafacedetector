@@ -1,13 +1,13 @@
 # Smista Foto · Cesena FC
 
-Versione **3.1** · 3 novembre 2026
+Versione **3.2** · 12 novembre 2026
 
 Smista Foto guarda le foto caricate dai fotografi su MEGA, riconosce giocatori e staff e
 copia ogni foto nella cartella personale di chi ne è protagonista:
 
 ```
-2026-27/MATCH/SERIEBKT/G10_Sudtirol_Cesena_1_1/Foto       →  PLAYERS/CIOFI/SERIE BKT/G10_SUDTIROL_CESENA/
-2026-27/ALLENAMENTI/2026_11_Novembre/20261102              →  PLAYERS/CIOFI/ALLENAMENTI/20261102_IMG_5169.jpg
+2026-27/MATCH/SERIEBKT/G10_Sudtirol_Cesena_1_1/Foto       →  PLAYERS/BIANCHI/SERIE BKT/G10_SUDTIROL_CESENA/
+2026-27/ALLENAMENTI/2026_11_Novembre/20261102              →  PLAYERS/BIANCHI/ALLENAMENTI/20261102_IMG_5169.jpg
 ```
 
 Gira tutto sul computer: le foto non vengono mandate a nessun servizio esterno.
@@ -42,6 +42,15 @@ aperta** (è il motore dell'app), e poi l'app.
    quello che non va, poi **Controlla e copia** › riepilogo › **Copia su MEGA**.
 
 Le revisioni non finite restano in **Revisioni** e si riprendono da dove le avevi lasciate.
+La pagina **Cartelle** mostra tutte le cartelle caricate dai fotografi e quali sono già state smistate.
+
+## Nuovo computer
+
+I volti imparati, la regola scelta e le cartelle escluse stanno nella cartella `dati/`, solo
+su quel computer. Su un computer nuovo: installa, poi **copia la cartella `dati/`** (e
+`primi_piani/`, se ci sono) da un computer già configurato, prima del primo avvio. Così non serve
+rifare l'apprendimento. Contengono le impronte dei volti: passale con una chiavetta o una cartella
+interna, mai su GitHub o in chat.
 
 ## Aggiornamento
 
@@ -118,6 +127,7 @@ installazione/            icona dell'app (scudetto del Cesena FC) per Mac e Wind
 
 ## Versioni
 
+- **3.2** (12 novembre 2026): pagina «Cartelle» con lo stato di ogni partita e allenamento (copiata, già nelle cartelle dei giocatori, da confermare, da smistare) e «Smista» diretto; l'email di MEGA non è più scritta nel programma (si inserisce nell'app e resta sul computer); nomi inventati negli esempi; il test di sicurezza controlla che nel repository non finiscano email.
 - **3.1** (3 novembre 2026): marchio con lo scudetto del Cesena FC nell'app, nell'icona della scheda e nell'icona sulla Scrivania (Mac e Windows; per averla rilanciare l'installazione).
 - **3.0** (3 novembre 2026): interfaccia ridisegnata con procedura guidata (cartella, destinazione, analisi, revisione), prima configurazione nell'app, revisione da tastiera con anteprima grande e volto evidenziato, annulla, scelte salvate da sole, copia sempre preceduta dal riepilogo, guida integrata con spiegazioni «?», tema chiaro/scuro; installazione e aggiornamento guidati per Mac e Windows con icona sulla Scrivania; regola del protagonista predefinita; corretto il conteggio «già presenti» dopo la copia.
 - **2.3.1** (3 novembre 2026): la regola scelta con «Usa questa» si salva in `dati/impostazioni_locali.json` e non più in `config.json`, così `git pull` non si blocca.

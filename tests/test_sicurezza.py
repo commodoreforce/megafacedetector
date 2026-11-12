@@ -68,7 +68,7 @@ def deve_passare(descrizione, funzione):
 
 
 SRC = "/2026-27/MATCH/SERIEBKT/G10/Foto/a.jpg"
-DEST = "/2026-27/PLAYERS/CIOFI/SERIE BKT/G10_SUDTIROL_CESENA/a.jpg"
+DEST = "/2026-27/PLAYERS/BIANCHI/SERIE BKT/G10_SUDTIROL_CESENA/a.jpg"
 
 # 1. comandi non consentiti
 for c in ["rm", "mv", "put", "sync", "backup", "share", "export", "import", "transfers",
@@ -88,31 +88,31 @@ deve_rifiutare("mkdir con opzione diversa da -p", lambda: m._esegui("mkdir", "-x
 deve_rifiutare("copia dentro MATCH", lambda: m.copia(SRC, "/2026-27/MATCH/SERIEBKT/G10/Foto/b.jpg"))
 deve_rifiutare("copia nella radice", lambda: m.copia(SRC, "/a.jpg"))
 deve_rifiutare("copia direttamente in PLAYERS", lambda: m.copia(SRC, "/2026-27/PLAYERS/a.jpg"))
-deve_rifiutare("copia nella cartella del giocatore (livello sbagliato)", lambda: m.copia(SRC, "/2026-27/PLAYERS/CIOFI/a.jpg"))
-deve_rifiutare("copia in PLAYERS/CIOFI/SERIE BKT (manca l'evento)", lambda: m.copia(SRC, "/2026-27/PLAYERS/CIOFI/SERIE BKT/a.jpg"))
-deve_rifiutare("copia con '..' per uscire da PLAYERS", lambda: m.copia(SRC, "/2026-27/PLAYERS/CIOFI/../../MATCH/x/y/a.jpg"))
+deve_rifiutare("copia nella cartella del giocatore (livello sbagliato)", lambda: m.copia(SRC, "/2026-27/PLAYERS/BIANCHI/a.jpg"))
+deve_rifiutare("copia in PLAYERS/BIANCHI/SERIE BKT (manca l'evento)", lambda: m.copia(SRC, "/2026-27/PLAYERS/BIANCHI/SERIE BKT/a.jpg"))
+deve_rifiutare("copia con '..' per uscire da PLAYERS", lambda: m.copia(SRC, "/2026-27/PLAYERS/BIANCHI/../../MATCH/x/y/a.jpg"))
 deve_rifiutare("copia con carattere jolly", lambda: m.copia("/2026-27/MATCH/*", DEST))
-deve_rifiutare("copia verso un file che non è una foto", lambda: m.copia(SRC, "/2026-27/PLAYERS/CIOFI/SERIE BKT/G10/x.txt"))
-deve_rifiutare("origine dentro PLAYERS", lambda: m.copia("/2026-27/PLAYERS/SHPENDI/MEDIADAY/a.jpg", DEST))
+deve_rifiutare("copia verso un file che non è una foto", lambda: m.copia(SRC, "/2026-27/PLAYERS/BIANCHI/SERIE BKT/G10/x.txt"))
+deve_rifiutare("origine dentro PLAYERS", lambda: m.copia("/2026-27/PLAYERS/NERI/MEDIADAY/a.jpg", DEST))
 deve_rifiutare("creare cartella fuori da PLAYERS", lambda: m.crea_cartella("/2026-27/MATCH/NUOVA/X/Y"))
-deve_rifiutare("creare cartella troppo in alto", lambda: m.crea_cartella("/2026-27/PLAYERS/CIOFI"))
+deve_rifiutare("creare cartella troppo in alto", lambda: m.crea_cartella("/2026-27/PLAYERS/BIANCHI"))
 deve_rifiutare("radice di scrittura troppo generica", lambda: Mega("/"))
 deve_rifiutare("radice di scrittura troppo generica 2", lambda: Mega("/2026-27"))
 
 # 3b. cartelle uniche (ALLENAMENTI): solo file direttamente lì, mai altrove allo stesso livello
-deve_passare("copia in PLAYERS/CIOFI/ALLENAMENTI (cartella unica)", lambda: m.copia(SRC, "/2026-27/PLAYERS/CIOFI/ALLENAMENTI/20261102_a.jpg"))
-deve_passare("crea PLAYERS/CIOFI/ALLENAMENTI", lambda: m.crea_cartella("/2026-27/PLAYERS/CIOFI/ALLENAMENTI"))
-deve_passare("copia in PLAYERS/_STAFF/DIAMANTI/ALLENAMENTI", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/DIAMANTI/ALLENAMENTI/x.jpg"))
-deve_rifiutare("copia in PLAYERS/CIOFI/SERIE BKT senza evento", lambda: m.copia(SRC, "/2026-27/PLAYERS/CIOFI/SERIE BKT/a.jpg"))
-deve_rifiutare("copia in PLAYERS/CIOFI/MEDIADAY (non è cartella unica)", lambda: m.copia(SRC, "/2026-27/PLAYERS/CIOFI/MEDIADAY/a.jpg"))
-deve_rifiutare("creare PLAYERS/CIOFI/MEDIADAY", lambda: m.crea_cartella("/2026-27/PLAYERS/CIOFI/MEDIADAY"))
+deve_passare("copia in PLAYERS/BIANCHI/ALLENAMENTI (cartella unica)", lambda: m.copia(SRC, "/2026-27/PLAYERS/BIANCHI/ALLENAMENTI/20261102_a.jpg"))
+deve_passare("crea PLAYERS/BIANCHI/ALLENAMENTI", lambda: m.crea_cartella("/2026-27/PLAYERS/BIANCHI/ALLENAMENTI"))
+deve_passare("copia in PLAYERS/_STAFF/VERDI/ALLENAMENTI", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/VERDI/ALLENAMENTI/x.jpg"))
+deve_rifiutare("copia in PLAYERS/BIANCHI/SERIE BKT senza evento", lambda: m.copia(SRC, "/2026-27/PLAYERS/BIANCHI/SERIE BKT/a.jpg"))
+deve_rifiutare("copia in PLAYERS/BIANCHI/MEDIADAY (non è cartella unica)", lambda: m.copia(SRC, "/2026-27/PLAYERS/BIANCHI/MEDIADAY/a.jpg"))
+deve_rifiutare("creare PLAYERS/BIANCHI/MEDIADAY", lambda: m.crea_cartella("/2026-27/PLAYERS/BIANCHI/MEDIADAY"))
 deve_rifiutare("copia in PLAYERS/ALLENAMENTI/a.jpg", lambda: m.copia(SRC, "/2026-27/PLAYERS/ALLENAMENTI/a.jpg"))
 deve_rifiutare("copia nella sorgente ALLENAMENTI", lambda: m.copia(SRC, "/2026-27/ALLENAMENTI/2026_11/a.jpg"))
 deve_rifiutare("PLAYERS/_STAFF/ALLENAMENTI/x.jpg", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/ALLENAMENTI/x.jpg"))
-deve_rifiutare("staff senza evento: _STAFF/DIAMANTI/SERIE BKT/a.jpg", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/DIAMANTI/SERIE BKT/a.jpg"))
-deve_rifiutare("sottocartella dentro ALLENAMENTI", lambda: m.copia(SRC, "/2026-27/PLAYERS/CIOFI/ALLENAMENTI/X/a.jpg"))
-deve_passare("staff con evento", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/DIAMANTI/SERIE BKT/G10/a.jpg"))
-deve_rifiutare("senza cartelle uniche configurate", lambda: Mega("/2026-27/PLAYERS").copia(SRC, "/2026-27/PLAYERS/CIOFI/ALLENAMENTI/a.jpg"))
+deve_rifiutare("staff senza evento: _STAFF/VERDI/SERIE BKT/a.jpg", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/VERDI/SERIE BKT/a.jpg"))
+deve_rifiutare("sottocartella dentro ALLENAMENTI", lambda: m.copia(SRC, "/2026-27/PLAYERS/BIANCHI/ALLENAMENTI/X/a.jpg"))
+deve_passare("staff con evento", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/VERDI/SERIE BKT/G10/a.jpg"))
+deve_rifiutare("senza cartelle uniche configurate", lambda: Mega("/2026-27/PLAYERS").copia(SRC, "/2026-27/PLAYERS/BIANCHI/ALLENAMENTI/a.jpg"))
 
 # 4. mai sovrascrivere
 risposta_ls[DEST] = (0, "a.jpg\n", "")
@@ -124,9 +124,9 @@ del risposta_ls[DEST]
 
 # 5. il caso normale deve funzionare
 eseguiti.clear()
-deve_passare("copia corretta in PLAYERS/CIOFI/SERIE BKT/G10_SUDTIROL_CESENA", lambda: m.copia(SRC, DEST))
-deve_passare("copia corretta per lo staff", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/DIAMANTI/SERIE BKT/G10_SUDTIROL_CESENA/a.jpg"))
-deve_passare("crea cartella evento", lambda: m.crea_cartella("/2026-27/PLAYERS/CIOFI/SERIE BKT/G10_SUDTIROL_CESENA"))
+deve_passare("copia corretta in PLAYERS/BIANCHI/SERIE BKT/G10_SUDTIROL_CESENA", lambda: m.copia(SRC, DEST))
+deve_passare("copia corretta per lo staff", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/VERDI/SERIE BKT/G10_SUDTIROL_CESENA/a.jpg"))
+deve_passare("crea cartella evento", lambda: m.crea_cartella("/2026-27/PLAYERS/BIANCHI/SERIE BKT/G10_SUDTIROL_CESENA"))
 cp = [c for c in eseguiti if c[0] == "cp"]
 if cp[0] != ("cp", SRC, DEST):
     print("ERRORE: comando cp inatteso", cp[0])
@@ -140,14 +140,14 @@ from smistafoto.registro import Registro  # noqa: E402
 
 cartella_lavoro = tempfile.mkdtemp()
 lavoro = {"sorgente": "/2026-27/MATCH/SERIEBKT/G10/Foto", "competizione": "SERIE BKT", "evento": "G10_X",
-          "cartelle_persone": {"CIOFI": "/2026-27/PLAYERS/CIOFI", "MATCH": "/2026-27/MATCH"},
+          "cartelle_persone": {"BIANCHI": "/2026-27/PLAYERS/BIANCHI", "MATCH": "/2026-27/MATCH"},
           "foto": [{"id": 0, "remoto": SRC, "relativo": "a.jpg", "nome_dest": "a.jpg"}], "volti": []}
 json.dump(lavoro, open(os.path.join(cartella_lavoro, "lavoro.json"), "w"))
 np.save(os.path.join(cartella_lavoro, "impronte.npy"), np.zeros((0, 128), np.float32))
 eseguiti.clear()
 import io, contextlib  # noqa: E401,E402
 with contextlib.redirect_stdout(io.StringIO()):
-    ris = simula_copia(m, cartella_lavoro, [{"foto": 0, "persona": "CIOFI"}, {"foto": 0, "persona": "MATCH"}], Registro())
+    ris = simula_copia(m, cartella_lavoro, [{"foto": 0, "persona": "BIANCHI"}, {"foto": 0, "persona": "MATCH"}], Registro())
 comandi = {c[0] for c in eseguiti}
 if comandi - {"ls"}:
     print("ERRORE: la simulazione ha usato", comandi)
@@ -179,6 +179,20 @@ for nome in os.listdir(cartella):
             if vietato in testo and nome not in ("flussi.py", "volti.py"):
                 print(f"ERRORE: {nome} contiene {vietato}")
                 errori += 1
+
+# 8. il repository è pubblico: nessuna email reale nei file
+ammesse = {"noreply@anthropic.com", "nome@dominio.it"}
+radice = os.path.dirname(QUI)
+for cartella_, _, nomi in os.walk(radice):
+    if any(x in cartella_ for x in (".git", ".venv", "dati", "lavori", "__pycache__", "modelli")):
+        continue
+    for n in nomi:
+        if not n.endswith((".py", ".js", ".html", ".css", ".md", ".json", ".txt", ".command", ".bat", ".ps1")):
+            continue
+        testo = open(os.path.join(cartella_, n), encoding="utf-8", errors="ignore").read()
+        for e in set(re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z.]{2,}", testo)) - ammesse:
+            print(f"ERRORE: email nel repository pubblico: {e} ({n})")
+            errori += 1
 
 print()
 print("TUTTO OK" if not errori else f"{errori} PROBLEMI")

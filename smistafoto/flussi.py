@@ -181,7 +181,7 @@ def nomi_nel_file(nome_file, persone):
     trovati = []
     for persona in persone:
         p = _parole(persona)
-        unito = "".join(p)  # D'URBANO -> durbano, DALLA VECCHIA -> dallavecchia
+        unito = "".join(p)  # D'ANGELO -> dangelo, DALLA TORRE -> dallatorre
         if p and len(unito) >= 4 and (unito in parole or
                                       any(parole[i:i + len(p)] == p for i in range(len(parole)))):
             trovati.append(persona)
@@ -296,7 +296,7 @@ def _vero(conn, lavoro, cartella_esistente):
     con_data = {f["nome_dest"]: posixpath.basename(f["relativo"]) for f in lavoro["foto"]}
     vero = set()
     for persona, cartella in lavoro["cartelle_persone"].items():
-        if lavoro.get("unica"):  # es. PLAYERS/CIOFI/ALLENAMENTI: tutti i giorni insieme
+        if lavoro.get("unica"):  # es. PLAYERS/BIANCHI/ALLENAMENTI: tutti i giorni insieme
             dest = posixpath.join(cartella, lavoro["competizione"])
         else:
             dest = posixpath.join(cartella, lavoro["competizione"], cartella_esistente)
@@ -530,8 +530,113 @@ def elenca_lavori(cartella_lavori):
                            "sicure": sum(v["stato"] == "sicuro" for v in l["volti"]),
                            "creato": l.get("creato", ""), "copiato": l.get("copiato", False),
                            "foto": len(l["foto"]), "prova": prova,
+                           "copiato_il": l.get("copiato_il", ""), "esito_copia": l.get("esito_copia"),
                            "ordine": os.path.getmtime(p)})
     return sorted(lavori, key=lambda x: -x["ordine"])
+
+
+# ---------------------------------------------------------------- stato delle cartelle
+
+def panoramica(cfg, conn, rif, cartella_lavori, cartella_dati, reg, campione=12):
+    """Elenca le cartelle caricate dai fotografi (partite e allenamenti) e dice per ognuna
+    se è già stata smistata: con Smista Foto su questo computer, oppure perché la cartella
+    della partita esiste già nelle cartelle dei giocatori (a mano o da un altro computer).
+    Su MEGA legge soltanto. Per non leggere tutte le persone ne guarda un campione."""
+    stagione_partite = cfg.get("cartella_partite") or posixpath.join(
+        posixpath.dirname(cfg["cartella_giocatori"].rstrip("/")), "MATCH")
+    stagione_all = cfg.get("cartella_allenamenti") or posixpath.join(
+        posixpath.dirname(cfg["cartella_giocatori"].rstrip("/")), "ALLENAMENTI")
+    locali = {}
+    for l in elenca_lavori(cartella_lavori):
+        if l["prova"]:
+            continue
+        att = locali.get(l["sorgente"])
+        if not att or (l["copiato"] and not att["copiato"]):
+            locali[l["sorgente"]] = l
+    giocatori = [i for i in rif.info.values() if i.get("tipo") == "giocatore"]
+    passo_c = max(1, len(giocatori) // campione)
+    giocatori = giocatori[::passo_c][:campione]
+
+    reg.inizia_fase("Leggo le cartelle dei fotografi")
+    reg.info(f"Leggo le cartelle in {stagione_partite} e {stagione_all}…")
+    voci = []
+    # --- partite: MATCH/<competizione>/<partita>/Foto
+    comp_dest = {}
+    try:
+        competizioni, _ = conn.elenca_cartelle(stagione_partite)
+    except RuntimeError as e:
+        reg.avviso(str(e))
+        competizioni = []
+    for comp in competizioni:
+        try:
+            partite, _ = conn.elenca_cartelle(posixpath.join(stagione_partite, comp))
+        except RuntimeError:
+            continue
+        for p in partite:
+            base = posixpath.join(stagione_partite, comp, p)
+            dest_comp, evento = ricava_evento(cfg, posixpath.join(base, "Foto"))
+            comp_dest.setdefault(dest_comp, set())
+            voci.append({"tipo": "partita", "gruppo": comp, "nome": p, "cartella": base,
+                         "sorgente": posixpath.join(base, "Foto"), "comp": dest_comp, "evento": evento})
+    # --- allenamenti: ALLENAMENTI/<mese>/<giorno>
+    try:
+        mesi, _ = conn.elenca_cartelle(stagione_all)
+    except RuntimeError as e:
+        reg.avviso(str(e))
+        mesi = []
+    unica_all = next((c for c in cfg.get("cartelle_uniche", []) if c.upper() == "ALLENAMENTI"), None)
+    for mese in mesi:
+        try:
+            giorni, _ = conn.elenca_cartelle(posixpath.join(stagione_all, mese))
+        except RuntimeError:
+            continue
+        for g in giorni:
+            sorg = posixpath.join(stagione_all, mese, g)
+            dest_comp, data = ricava_evento(cfg, sorg)
+            voci.append({"tipo": "allenamento", "gruppo": mese, "nome": g, "cartella": sorg,
+                         "sorgente": sorg, "comp": dest_comp, "evento": data})
+
+    # --- cosa c'è già nelle cartelle dei giocatori (campione)
+    reg.inizia_fase("Controllo le cartelle dei giocatori", len(giocatori))
+    eventi_presenti = {c: {} for c in comp_dest}
+    date_presenti = {}
+    for i, g in enumerate(giocatori, 1):
+        reg.passo(i, posixpath.basename(g["cartella"]))
+        for c in comp_dest:
+            for ev in conn.elenca_nomi(posixpath.join(g["cartella"], c)):
+                eventi_presenti[c][ev.upper()] = eventi_presenti[c].get(ev.upper(), 0) + 1
+        if unica_all:
+            for n in conn.elenca_nomi(posixpath.join(g["cartella"], unica_all)):
+                m = re.match(r"^(20\d{6})_", n)
+                if m:
+                    date_presenti[m.group(1)] = date_presenti.get(m.group(1), 0) + 1
+
+    for v in voci:
+        l = locali.get(v["sorgente"]) or locali.get(v["cartella"])
+        v["giocatori_con_foto"] = 0
+        if v["tipo"] == "partita":
+            presenti = eventi_presenti.get(v["comp"], {})
+            giornata = (v["evento"].split("_")[0] + "_") if v["evento"] else None
+            v["giocatori_con_foto"] = presenti.get(v["evento"].upper(), 0) or max(
+                [n for k, n in presenti.items() if giornata and k.startswith(giornata)] or [0])
+        elif v["evento"]:
+            v["giocatori_con_foto"] = date_presenti.get(v["evento"], 0)
+        if l and l["copiato"]:
+            v["stato"], v["lavoro"] = "copiata", l["id"]
+            v["copiato_il"], v["esito_copia"] = l.get("copiato_il") or l["creato"], l.get("esito_copia")
+        elif l:
+            v["stato"], v["lavoro"] = "da_confermare", l["id"]
+        elif v["giocatori_con_foto"]:
+            v["stato"] = "presente"
+        else:
+            v["stato"] = "da_fare"
+    ris = {"controllato_il": time.strftime("%d/%m/%Y %H:%M"), "campione": len(giocatori), "voci": voci}
+    with open(os.path.join(cartella_dati, "panoramica.json"), "w", encoding="utf-8") as fh:
+        json.dump(ris, fh, ensure_ascii=False)
+    n = {s: sum(v["stato"] == s for v in voci) for s in ("copiata", "presente", "da_confermare", "da_fare")}
+    reg.ok(f"Cartelle controllate: {len(voci)}. Copiate con Smista Foto: {n['copiata']}, già nelle cartelle "
+           f"dei giocatori: {n['presente']}, da confermare: {n['da_confermare']}, da smistare: {n['da_fare']}.")
+    return ris
 
 
 # ---------------------------------------------------------------- copia
@@ -681,6 +786,10 @@ def esegui_copia(conn, rif, lavoro_dir, decisioni, reg):
                                   "conferma:" + lavoro["sorgente"])
     rif.salva()
     lavoro["copiato"] = True
+    import platform
+    lavoro["copiato_il"] = time.strftime("%d/%m/%Y %H:%M")
+    lavoro["esito_copia"] = {"copiate": copiate, "gia_presenti": gia, "errori": len(errori),
+                             "persone": len(piano), "computer": platform.node() or ""}
     with open(os.path.join(lavoro_dir, "lavoro.json"), "w", encoding="utf-8") as fh:
         json.dump(lavoro, fh, ensure_ascii=False)
 

@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from . import DATA_VERSIONE, VERSIONE
-from .flussi import (e_unica, analizza_cartella, calibra_insieme, carica_lavoro, confronta, deboli, elenca_lavori,
+from .flussi import (e_unica, panoramica, analizza_cartella, calibra_insieme, carica_lavoro, confronta, deboli, elenca_lavori,
                      esegui_copia, impara, ricava_evento, simula_copia, trova_cartella_esistente)
 from .finestra import apri_finestra as _apri_finestra
 from .mega import collegamento, normalizza
@@ -270,6 +270,20 @@ class App:
                     cfg[k] = v
         return cfg
 
+    def controlla_cartelle(self):
+        self._serve_collegamento()
+
+        def lavoro():
+            self.attivita["risultato"] = panoramica(self.cfg, self.conn, self.rif, self.lavori, self.dati, self.reg)
+        self.avvia("cartelle", lavoro)
+
+    def ultima_panoramica(self):
+        p = os.path.join(self.dati, "panoramica.json")
+        if not os.path.exists(p):
+            return None
+        with open(p, encoding="utf-8") as fh:
+            return json.load(fh)
+
     def applica_regola(self, r):
         if self.attivita["in_corso"]:
             raise RuntimeError("C'è un'attività in corso: aspetta che finisca.")
@@ -452,6 +466,8 @@ def _gestore(app):
                 elif parti == ["api", "stato"]:
                     dalla = int(parse_qs(u.query).get("dalla", ["0"])[0])
                     self._invia(app.stato(dalla))
+                elif parti == ["api", "cartelle"]:
+                    self._invia(app.ultima_panoramica() or {})
                 elif parti[:2] == ["api", "lavoro"] and len(parti) == 3:
                     self._invia(app.dati_lavoro(parti[2]))
                 elif parti[0] == "l" and len(parti) == 2:  # vecchi collegamenti alla revisione
@@ -484,6 +500,8 @@ def _gestore(app):
                     app.collega()
                 elif parti == ["api", "impara"]:
                     app.impara(bool(c.get("tutti")), c.get("solo"))
+                elif parti == ["api", "cartelle"]:
+                    app.controlla_cartelle()
                 elif parti == ["api", "calibra"]:
                     app.calibra()
                 elif parti == ["api", "regola"]:

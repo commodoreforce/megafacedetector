@@ -129,7 +129,8 @@ if ($chi -match "[\w.+-]+@[\w-]+\.[\w.-]+") {
   Info "Non sei ancora entrato in MEGA con l'account del club. Lo puoi fare anche dopo:"
   Info "l'app ti guida. Per farlo adesso:"
   Info "  1. si apre MEGAcmd (una finestra nera)"
-  Write-Host "  2. scrivi:  login email-del-club  e premi Invio" -ForegroundColor Yellow
+  Write-Host "  2. scrivi:  login  seguito dall'email dell'account MEGA del club, e premi Invio" -ForegroundColor Yellow
+  Info "     (esempio:  login nome@dominio.it)"
   Info "  3. scrivi la password e premi Invio (mentre la scrivi non compare nulla)"
   $r = Read-Host "   Apro MEGAcmd adesso? [S/n]"
   if ($r -ne "n" -and $r -ne "N") {

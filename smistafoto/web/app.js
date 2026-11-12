@@ -205,6 +205,11 @@ function gestisciFineAttivita(a) {
     notifica("Prova finita", `${a.risultato.precisione}% di precisione`);
   } else if (tipo === "calibra") {
     avviso("Regole calcolate.", "ok");
+  } else if (tipo === "cartelle") {
+    caricaPanoramica(); avviso("Controllo delle cartelle finito.", "ok");
+  } else if (tipo === "copia" && PANORAMICA) {
+    const v = PANORAMICA.voci.find(x => x.lavoro === a.lavoro || S.lavori.some(l => l.id === a.lavoro && l.sorgente === x.sorgente));
+    if (v) { v.stato = "copiata"; v.lavoro = a.lavoro; }
   }
 }
 function chiediNotifiche() {
@@ -246,7 +251,7 @@ window.addEventListener("hashchange", naviga);
 /* ================================================================ componenti riutilizzabili */
 const PASSI_PREP = {
   megacmd: {titolo: "Installa MEGAcmd", testo: `È il programma ufficiale di MEGA che Smista Foto usa per leggere e copiare le foto. Scaricalo da <a href="https://mega.io/cmd" target="_blank" rel="noopener">mega.io/cmd</a>, installalo come un normale programma e poi premi «Ricontrolla».`},
-  accesso: {titolo: "Entra in MEGA con l'account del club", testo: `Apri <b>MEGAcmd</b> (dalle Applicazioni sul Mac, dal menu Start su Windows). Nella finestra che si apre scrivi il comando qui sotto con l'email del club, premi Invio e inserisci la password: mentre la scrivi non compare nulla, è normale. Il semaforo in alto diventa verde da solo.`},
+  accesso: {titolo: "Entra in MEGA con l'account del club", testo: `Apri <b>MEGAcmd</b> (dalle Applicazioni sul Mac, dal menu Start su Windows). Scrivi qui sotto l'email dell'account MEGA del club: si compone il comando da incollare in MEGAcmd. Premi Invio e inserisci la password: mentre la scrivi non compare nulla, è normale. Il semaforo in alto diventa verde da solo. L'email resta solo su questo computer.`},
   modello: {titolo: "Prepara il riconoscimento dei volti", testo: "Al primo avvio Smista Foto scarica il modello di riconoscimento (circa 260 MB, una volta sola). Parte da solo appena MEGA è collegato."},
   volti: {titolo: "Impara i volti di giocatori e staff", testo: "Smista Foto guarda le cartelle in PLAYERS e PLAYERS/_STAFF e impara chi è il proprietario di ogni cartella. Su MEGA legge soltanto. Ci vogliono 10-20 minuti; intanto puoi usare il computer per altro."},
 };
@@ -257,7 +262,8 @@ function vistaPreparazione(s) {
     const classe = p.fatto ? "fatto" : p.errore ? "errore" : p.in_corso ? "in-corso" : i === prima ? "attivo" : "futuro";
     let az = "";
     if (p.id === "megacmd") az = `<div class="riga-btn"><a class="btn primo" href="https://mega.io/cmd" target="_blank" rel="noopener">Scarica MEGAcmd</a><button class="btn" data-az="ricontrolla">Ricontrolla</button></div>`;
-    if (p.id === "accesso") az = `<div class="riga-btn"><code id="cmdLogin">login email-del-club</code><button class="btn" data-az="copia-login">${ICONA.copia} Copia il comando</button><button class="btn" data-az="ricontrolla">Ricontrolla</button></div>`;
+    if (p.id === "accesso") az = `<div class="campo" style="max-width:420px;margin-top:10px"><label for="emailMega">Email dell'account MEGA del club</label><input id="emailMega" type="email" autocomplete="off" placeholder="nome@dominio.it" value="${esc(memo("emailMega") || "")}"></div>
+      <div class="riga-btn"><code id="cmdLogin">login ${esc(memo("emailMega") || "email-del-club")}</code><button class="btn" data-az="copia-login">${ICONA.copia} Copia il comando</button><button class="btn" data-az="ricontrolla">Ricontrolla</button></div>`;
     if (p.id === "modello" && p.errore) az = `<div class="avviso rosso"><b>Non riesco a preparare il modello.</b>${esc(s.problema || "")}</div><div class="riga-btn"><button class="btn primo" data-az="ricontrolla">Riprova</button><a class="btn" href="#/aiuto/problemi">Soluzioni ai problemi</a></div>`;
     if (p.id === "modello" && p.in_corso) az = `<p class="tenue">Download in corso: l'avanzamento è nella barra in basso.</p>`;
     if (p.id === "volti") az = p.in_corso ? `<p class="tenue">Sto imparando: l'avanzamento è nella barra in basso.</p>` : `<div class="riga-btn"><button class="btn primo" data-az="impara" ${s.preparazione.slice(0, 3).every(x => x.fatto) ? "" : "disabled"}>Impara i volti</button></div>`;
@@ -265,12 +271,21 @@ function vistaPreparazione(s) {
   }).join("") + `</ol>`;
 }
 function collegaAzioniPrep(el) {
+  el.oninput = e => {
+    if (e.target.id !== "emailMega") return;
+    const v = e.target.value.trim();
+    memo("emailMega", v || null);
+    $("#cmdLogin").textContent = "login " + (v || "email-del-club");
+  };
   el.onclick = async e => {
     const b = e.target.closest("[data-az]"); if (!b) return;
     try {
       if (b.dataset.az === "ricontrolla") { await api("/api/collega", {}); avviso("Ricontrollo in corso.", "info"); }
       if (b.dataset.az === "impara") { chiediNotifiche(); await api("/api/impara", {tutti: false}); avviso("Inizio a imparare i volti: ti avviso quando ho finito.", "info"); }
-      if (b.dataset.az === "copia-login") { await navigator.clipboard.writeText($("#cmdLogin").textContent); avviso("Comando copiato: incollalo nella finestra di MEGAcmd e correggi l'email se serve.", "ok"); }
+      if (b.dataset.az === "copia-login") {
+        if (!memo("emailMega")) { $("#emailMega")?.focus(); return avviso("Scrivi prima l'email dell'account MEGA del club.", "avviso"); }
+        await navigator.clipboard.writeText($("#cmdLogin").textContent); avviso("Comando copiato: incollalo nella finestra di MEGAcmd e premi Invio.", "ok");
+      }
     } catch (err) { errore(err); }
   };
 }
@@ -374,13 +389,14 @@ V.home = {
 /* ================================================================ vista: Smista (procedura a passi) */
 V.smista = {
   titolo: "Smista foto",
-  mostra(el) {
+  mostra(el, [percorso]) {
     this.el = el; this.passo = 1; this.scelta = null; this.attesa = false;
     if (S && !S.pronto) {
       el.innerHTML = `<h1>Smista foto</h1><div class="avviso giallo"><b>Prima completa la configurazione.</b>Mancano alcuni passaggi, per esempio il collegamento a MEGA o l'apprendimento dei volti.</div><a class="btn primo" href="#/">Vai alla configurazione</a>`;
       return;
     }
     if (S?.attivita.in_corso && S.attivita.tipo === "smista") { this.passo = 3; }
+    else if (percorso) { el.innerHTML = `<p class="tenue">Apro la cartella…</p>`; return this.controlla(percorso); }
     this.disegna();
   },
   testataPassi() {
@@ -474,6 +490,69 @@ V.smista = {
       if (a.errore) { this.el.innerHTML = `${this.testataPassi()}<h1>Analisi interrotta</h1><div class="avviso rosso"><b>Che cosa è successo</b>${esc(a.errore)}</div><div class="riga-btn"><button class="btn primo" id="bRiprova">Torna alla scelta della cartella</button><a class="btn" href="#/aiuto/problemi">Soluzioni ai problemi</a></div>`; $("#bRiprova", this.el).onclick = () => { this.passo = 1; this.disegna(); }; this.passo = 0; }
       else if (a.lavoro) { this.passo = 4; location.hash = "#/revisione/" + a.lavoro; }
     }
+  },
+};
+
+/* ================================================================ vista: Cartelle (cosa è stato smistato) */
+let PANORAMICA = null;
+const STATI_CARTELLA = {
+  copiata: ["verde", "Copiata con Smista Foto"],
+  presente: ["verde", "Già nelle cartelle dei giocatori"],
+  da_confermare: ["giallo", "Analizzata, da confermare"],
+  da_fare: ["senza", "Da smistare"],
+};
+async function caricaPanoramica() {
+  try { const p = await api("/api/cartelle"); PANORAMICA = p.voci ? p : null; } catch (e) { PANORAMICA = null; }
+  const n = PANORAMICA ? PANORAMICA.voci.filter(v => v.stato === "da_fare").length : 0;
+  $("#contaDaFare").textContent = n; $("#contaDaFare").classList.toggle("nascosto", !n);
+}
+V.cartelle = {
+  titolo: "Cartelle",
+  mostra(el) { this.el = el; this.filtro = memo("filtroCartelle") || "tutte"; this.cerca = ""; this.chiave = ""; caricaPanoramica().then(() => { this.chiave = ""; S && this.aggiorna(S); }); },
+  aggiorna(s) {
+    const a = s.attivita;
+    if (!a.in_corso && a.tipo === "cartelle" && a.risultato && a.risultato !== this._ultimo) { this._ultimo = a.risultato; PANORAMICA = a.risultato; caricaPanoramica(); }
+    const k = JSON.stringify([PANORAMICA?.controllato_il, this.filtro, a.in_corso && a.tipo, s.pronto, s.lavori.map(l => [l.id, l.copiato])]); if (k === this.chiave) return; this.chiave = k;
+    const el = this.el, P = PANORAMICA, occ = a.in_corso || !s.pronto;
+    const testa = `<div class="intesta"><h1>Cartelle</h1><div class="dx riga-btn" style="margin-top:0">
+        <button class="btn primo" id="bControllaC" ${occ ? "disabled" : ""}>${a.in_corso && a.tipo === "cartelle" ? "Controllo in corso…" : "Controlla su MEGA"}</button></div></div>
+      <p class="tenue" style="margin-top:8px">Tutte le cartelle di partite e allenamenti caricate dai fotografi, con il loro stato ${q("stati")}. Per sapere cosa è già stato fatto, anche a mano o da un altro computer, Smista Foto guarda le cartelle dei giocatori. Su MEGA legge soltanto.</p>`;
+    if (!P) {
+      el.innerHTML = testa + `<div class="blocco" style="margin-top:16px"><h3>Nessun controllo ancora</h3><p class="tenue">Premi «Controlla su MEGA»: ci vuole circa un minuto.</p></div>`;
+    } else {
+      const conta = Object.fromEntries(Object.keys(STATI_CARTELLA).map(st => [st, P.voci.filter(v => v.stato === st).length]));
+      const filtri = {tutte: `Tutte (${P.voci.length})`, da_fare: `Da smistare (${conta.da_fare})`, da_confermare: `Da confermare (${conta.da_confermare})`, fatte: `Fatte (${conta.copiata + conta.presente})`};
+      const ok = v => this.filtro === "tutte" || (this.filtro === "fatte" ? ["copiata", "presente"].includes(v.stato) : v.stato === this.filtro);
+      const cerca = this.cerca.toLowerCase();
+      const L = P.voci.filter(v => ok(v) && (v.nome + " " + v.gruppo).toLowerCase().includes(cerca));
+      const riga = v => {
+        const [col, et] = STATI_CARTELLA[v.stato];
+        let det = "";
+        if (v.stato === "copiata") { const e = v.esito_copia; det = `il ${esc(v.copiato_il)}${e ? `: ${e.copiate} foto copiate per ${e.persone} persone${e.computer ? ", dal computer " + esc(e.computer) : ""}` : ""}`; }
+        else if (v.stato === "presente") det = `trovata nelle cartelle di ${v.giocatori_con_foto === 1 ? "1 giocatore" : v.giocatori_con_foto + " giocatori"} su ${P.campione} controllati: fatta a mano o da un altro computer`;
+        else if (v.stato === "da_confermare") det = "analisi finita, foto non ancora copiate";
+        const az = v.stato === "copiata" ? `<a class="btn" href="#/revisione/${encodeURIComponent(v.lavoro)}">Vedi</a>`
+          : v.stato === "da_confermare" ? `<a class="btn primo" href="#/revisione/${encodeURIComponent(v.lavoro)}">Riprendi la revisione</a>`
+          : `<a class="btn ${v.stato === "da_fare" ? "primo" : ""}" href="#/smista/${encodeURIComponent(v.sorgente)}">${v.stato === "presente" ? "Smista comunque" : "Smista"}</a>`;
+        return `<tr><td><b>${esc(v.nome)}</b></td><td><span class="chip ${col}">${et}</span>${det ? `<br><span class="tenue piccolo">${det}</span>` : ""}</td><td><div class="az">${az}</div></td></tr>`;
+      };
+      const sezione = (tipo, titolo) => {
+        const V2 = L.filter(v => v.tipo === tipo); if (!V2.length) return "";
+        const gruppi = [...new Set(V2.map(v => v.gruppo))].sort((x, y) => y.localeCompare(x, "it", {numeric: true}));
+        return `<section class="sezione"><h2>${titolo}</h2>${gruppi.map(g => {
+          const R = V2.filter(v => v.gruppo === g).sort((x, y) => y.nome.localeCompare(x.nome, "it", {numeric: true}));
+          return `<h3 style="margin:16px 0 6px">${esc(g)}</h3><div class="blocco" style="padding:4px 18px"><table><tbody>${R.map(riga).join("")}</tbody></table></div>`;
+        }).join("")}</section>`;
+      };
+      el.innerHTML = testa + `<p class="tenue piccolo">Ultimo controllo: ${esc(P.controllato_il)}. Le copie fatte da questo computer si vedono subito; quelle fatte a mano o da altri computer compaiono dopo un nuovo controllo.</p>
+        <div class="barra-strumenti"><label class="sr" for="cercaC">Cerca</label><input id="cercaC" class="testo" placeholder="Cerca, es. G10 o 1102" value="${esc(this.cerca)}">
+        ${Object.entries(filtri).map(([f, t]) => `<button class="btn ${this.filtro === f ? "primo" : ""}" data-f="${f}" aria-pressed="${this.filtro === f}">${t}</button>`).join("")}</div>
+        <div id="listaC">${sezione("partita", "Partite") + sezione("allenamento", "Allenamenti") || `<p class="tenue" style="margin-top:16px">Nessuna cartella con questi criteri.</p>`}</div>`;
+      // lo stato delle copie fatte da questo computer si aggiorna senza ricontrollare MEGA
+      $$("[data-f]", el).forEach(b => b.onclick = () => { this.filtro = b.dataset.f; memo("filtroCartelle", this.filtro); this.chiave = ""; this.aggiorna(S); });
+      $("#cercaC", el).oninput = e => { this.cerca = e.target.value; const pos = e.target.selectionStart; this.chiave = ""; this.aggiorna(S); const i = $("#cercaC", this.el); i.focus(); i.setSelectionRange(pos, pos); };
+    }
+    $("#bControllaC", el).onclick = () => api("/api/cartelle", {}).then(() => avviso("Controllo le cartelle su MEGA: ci vuole circa un minuto.", "info")).catch(errore);
   },
 };
 
@@ -609,6 +688,7 @@ function tabellaRegole(r) {
 
 /* ================================================================ avvio */
 window.addEventListener("load", () => {
+  caricaPanoramica();
   naviga();
   aggiornaStato();
   setInterval(aggiornaStato, 1000);

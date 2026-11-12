@@ -111,7 +111,8 @@ else
   info "Non sei ancora entrato in MEGA con l'account del club. Lo puoi fare anche dopo,"
   info "l'app ti guida. Per farlo adesso:"
   info "  1. si apre MEGAcmd (una finestra nera)"
-  info "  2. scrivi:  ${G}login email-del-club${N}  e premi Invio"
+  info "  2. scrivi:  ${G}login${N} seguito dall'email dell'account MEGA del club, e premi Invio"
+  info "     (esempio:  login nome@dominio.it)"
   info "  3. scrivi la password e premi Invio (mentre la scrivi non compare nulla)"
   read -r -p "   Apro MEGAcmd adesso? [S/n] " R1
   if [ "${R1:-s}" != "n" ] && [ "${R1:-s}" != "N" ]; then open -a MEGAcmd 2>/dev/null || open "/Applications/MEGAcmd.app"; fi
