@@ -6,3 +6,10 @@ lavori/
 primi_piani/*/
 .DS_Store
 installazione.log
+# volti esportati e copie di sicurezza: contengono impronte dei volti, mai su GitHub
+backup_volti/
+SmistaFoto_volti_*.zip
+.esportazione_tmp.zip
+.importazione_upload.zip
+.importazione_tmp/
+.dati_prima_di_importare/

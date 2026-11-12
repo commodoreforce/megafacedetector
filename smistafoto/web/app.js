@@ -290,6 +290,44 @@ function collegaAzioniPrep(el) {
   };
 }
 
+/* volti su un altro computer: esporta / importa (solo sul computer, MEGA non c'entra) */
+async function esportaVolti(b) {
+  if (b) b.disabled = true;
+  avviso("Preparo il file con i volti…", "info");
+  try {
+    const r = await fetch("/api/esporta-volti", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+    if (!r.ok) { let j = {}; try { j = await r.json(); } catch (e) { /* */ } throw new Error(j.errore || "Esportazione non riuscita."); }
+    const nome = (r.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || "SmistaFoto_volti.zip";
+    const url = URL.createObjectURL(await r.blob());
+    const a = Object.assign(document.createElement("a"), {href: url, download: nome});
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    modale({titolo: "Volti esportati", corpo: `<p>Il file <b>${esc(nome)}</b> è nella cartella Download.</p>
+      <p>Sull'altro computer apri Smista Foto, vai in «Giocatori e staff» e premi <b>Importa i volti</b>.</p>
+      <div class="avviso giallo"><b>Contiene le impronte dei volti delle persone</b>Spostalo con una chiavetta o una cartella interna del club. Non mandarlo per email o chat e non caricarlo su GitHub. Quando hai finito, cancellalo dai Download.</div>`});
+  } catch (e) { errore(e); } finally { if (b) b.disabled = false; }
+}
+function scegliImportaVolti() {
+  const i = Object.assign(document.createElement("input"), {type: "file", accept: ".zip,application/zip"});
+  i.onchange = () => i.files[0] && importaVolti(i.files[0]);
+  i.click();
+}
+async function importaVolti(file) {
+  if (!/\.zip$/i.test(file.name)) return avviso("Scegli il file .zip creato con «Esporta i volti».", "avviso");
+  const gia = S?.persone ? S.persone.giocatori + S.persone.staff : 0;
+  const ok = await conferma("Importare i volti da questo file?",
+    (gia ? `I ${gia} volti che conosce già questo computer vengono sostituiti da quelli del file. Prima ne salvo una copia nella cartella <code>backup_volti</code>, così puoi tornare indietro. ` : "")
+    + "Su MEGA non cambia nulla.", "Importa i volti");
+  if (!ok) return;
+  try {
+    const r = await fetch("/api/importa-volti", {method: "POST", headers: {"Content-Type": "application/zip"}, body: file});
+    let j = {}; try { j = await r.json(); } catch (e) { /* */ }
+    if (!r.ok) throw new Error(j.errore || "Importazione non riuscita.");
+    avviso(`Volti importati: ${j.persone} ${j.persone === 1 ? "persona" : "persone"}${j.creato_il ? ` (esportati il ${j.creato_il.split(" ")[0].split("-").reverse().join("/")})` : ""}.`, "ok", {durataMs: 8000});
+    aggiornaStato();
+  } catch (e) { errore(e); }
+}
+
 /* esploratore delle cartelle su MEGA: solo lettura */
 function esploratore(contenitore, {alla_scelta, inizio = ""}) {
   let corrente = null, filtro = "";
@@ -352,8 +390,11 @@ V.home = {
     if (!s.pronto) {
       el.innerHTML = `<h1>Prima configurazione</h1><p class="tenue" style="margin-top:8px">Quattro passaggi, da fare una volta sola su questo computer. Ogni passo si spunta da solo quando è fatto.</p>
         <div class="blocco" style="margin-top:20px" id="prep">${vistaPreparazione(s)}</div>
+        ${s.persone.giocatori + s.persone.staff ? "" : `<div class="avviso info" style="margin-top:16px"><b>Hai già Smista Foto su un altro computer?</b>Non serve imparare i volti da capo. Sull'altro computer apri «Giocatori e staff» e premi «Esporta i volti», poi porta qui il file con una chiavetta.
+          <div class="riga-btn"><button class="btn" id="bImportaPrep">Importa i volti da un file</button></div></div>`}
         <p class="tenue piccolo" style="margin-top:14px">Qualcosa non va? <a href="#/aiuto/problemi">Soluzioni ai problemi più comuni</a>.</p>`;
       collegaAzioniPrep($("#prep", el));
+      if ($("#bImportaPrep", el)) $("#bImportaPrep", el).onclick = scegliImportaVolti;
       return;
     }
     const deb = s.persone.deboli;
@@ -591,7 +632,11 @@ V.volti = {
       <div class="barra-strumenti" style="top:57px"><label class="sr" for="cercaP">Cerca</label><input id="cercaP" class="testo" placeholder="Cerca un nome" value="${esc(this.cerca)}">
         ${["tutti", "deboli", "giocatore", "staff"].map(f => `<button class="btn ${this.filtro === f ? "primo" : ""}" data-f="${f}" aria-pressed="${this.filtro === f}">${{tutti: "Tutti", deboli: "Da migliorare", giocatore: "Giocatori", staff: "Staff"}[f]}</button>`).join("")}</div>
       <div class="blocco" style="padding:6px 18px;margin-top:12px"><table><thead><tr><th>Nome</th><th>Foto utili ${q("debole")}</th><th>Primi piani</th><th></th></tr></thead><tbody id="righeP"></tbody></table></div>
-      ${s.esclusi.length ? `<section class="sezione"><h3>Cartelle escluse</h3><p class="tenue">Non sono persone (es. 00VARIE): Smista Foto le ignora. Su MEGA non cambia nulla.</p><div class="riga-btn">${s.esclusi.map(n => `<span class="chip senza">${esc(n)}</span><button class="btn piatto" data-in="${esc(n)}" ${occ ? "disabled" : ""}>Includi di nuovo</button>`).join("")}</div></section>` : ""}`;
+      ${s.esclusi.length ? `<section class="sezione"><h3>Cartelle escluse</h3><p class="tenue">Non sono persone (es. 00VARIE): Smista Foto le ignora. Su MEGA non cambia nulla.</p><div class="riga-btn">${s.esclusi.map(n => `<span class="chip senza">${esc(n)}</span><button class="btn piatto" data-in="${esc(n)}" ${occ ? "disabled" : ""}>Includi di nuovo</button>`).join("")}</div></section>` : ""}
+      <section class="sezione"><h3>Portare i volti su un altro computer</h3>
+        <p class="tenue">Su un computer nuovo non serve imparare i volti da capo: esporta qui un file con i volti imparati, i primi piani e le regole, e importalo sull'altro. Il file contiene le impronte dei volti delle persone: spostalo con una chiavetta o una cartella interna del club, mai per email, chat o GitHub.</p>
+        <div class="riga-btn"><button class="btn" id="bEsportaV" ${s.attivita.in_corso || !s.elenco.length ? "disabled" : ""}>Esporta i volti</button>
+        <button class="btn" id="bImportaV" ${s.attivita.in_corso ? "disabled" : ""}>Importa i volti</button></div></section>`;
     const disegnaRighe = () => {
       const c = this.cerca.toLowerCase();
       const R = s.elenco.filter(p => (this.filtro === "tutti" || (this.filtro === "deboli" && p.foto < 4) || p.tipo === this.filtro) && p.nome.toLowerCase().includes(c));
@@ -609,6 +654,8 @@ V.volti = {
     $("#cercaP", el).oninput = e => { this.cerca = e.target.value; disegnaRighe(); };
     $$("[data-f]", el).forEach(b => b.onclick = () => { this.filtro = b.dataset.f; this.chiave = ""; this.aggiorna(S); });
     $("#bImpara", el).onclick = () => api("/api/impara", {tutti: false}).then(() => { chiediNotifiche(); avviso("Imparo i volti nuovi: l'avanzamento è in basso.", "info"); }).catch(errore);
+    $("#bEsportaV", el).onclick = e => esportaVolti(e.currentTarget);
+    $("#bImportaV", el).onclick = () => scegliImportaVolti();
     $("#bReimpara", el).onclick = async () => { if (await conferma("Reimparare tutti i volti?", "Rifà l'apprendimento di tutte le persone da zero: 10-20 minuti. Serve solo se il riconoscimento è peggiorato.", "Reimpara tutti")) api("/api/impara", {tutti: true}).catch(errore); };
     const carica = async (nome, files) => {
       let ok = 0;

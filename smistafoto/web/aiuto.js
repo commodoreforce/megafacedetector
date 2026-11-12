@@ -81,7 +81,9 @@ V.aiuto = {
 <p>Le persone sono le cartelle in <code>PLAYERS</code> e <code>PLAYERS/_STAFF</code>. Smista Foto impara il volto del proprietario di ogni cartella guardando circa 30 sue foto, soprattutto del Media Day.</p>
 <ul><li><b>Arriva un giocatore nuovo:</b> crea la sua cartella su MEGA come sempre, mettici qualche foto e premi «Impara i volti nuovi».</li>
 <li><b>Riconoscimento debole:</b> aggiungi 3-5 primi piani trascinandoli sulla riga della persona, poi conferma di reimpararla. I primi piani restano solo su questo computer.</li>
-<li><b>Una cartella non è una persona</b> (es. 00VARIE): premi «Non è una persona». Su MEGA non cambia nulla.</li></ul></section>
+<li><b>Una cartella non è una persona</b> (es. 00VARIE): premi «Non è una persona». Su MEGA non cambia nulla.</li>
+<li><b>Computer nuovo:</b> non serve imparare di nuovo. Sul computer già pronto premi «Esporta i volti» (in fondo a questa pagina): nei Download trovi un file <code>SmistaFoto_volti_….zip</code> con volti, primi piani, regola scelta e cartelle escluse. Sul computer nuovo premi «Importa i volti» (anche dalla pagina Inizio, durante la prima configurazione) e scegli il file. I volti che c'erano prima vengono salvati nella cartella <code>backup_volti</code>.</li></ul>
+<div class="avviso giallo"><b>Il file esportato contiene le impronte dei volti delle persone</b>Spostalo con una chiavetta o una cartella interna del club, non mandarlo per email o chat e non caricarlo su GitHub. Dopo l'importazione cancellalo dai Download. Esportare e importare non usa MEGA.</div></section>
 
 <section id="a-sicurezza"><h2>Sicurezza dell'archivio</h2>
 <p>MEGA è l'archivio storico del club, senza altre copie. Per questo Smista Foto ha regole rigide scritte nel programma e controllate prima di ogni comando:</p>

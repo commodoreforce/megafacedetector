@@ -174,11 +174,16 @@ for nome in os.listdir(cartella):
             print("ERRORE: finestra.py deve solo aprire il browser, non usare MEGA")
             errori += 1
         # operazioni su file del COMPUTER (mai su MEGA, che si raggiunge solo da mega.py):
-        # flussi.py cancella le foto temporanee scaricate, volti.py salva il modello scaricato
+        # flussi.py cancella le foto temporanee scaricate, volti.py salva il modello scaricato,
+        # archivio.py e app.py sostituiscono dati/ e primi_piani/ quando si importano i volti
         for vietato in ("os.remove(", "shutil.rmtree(", "os.rename(", "os.replace("):
-            if vietato in testo and nome not in ("flussi.py", "volti.py"):
+            if vietato in testo and nome not in ("flussi.py", "volti.py", "archivio.py", "app.py"):
                 print(f"ERRORE: {nome} contiene {vietato}")
                 errori += 1
+
+        if nome == "archivio.py" and re.search(r"^\s*(from|import)\s+\S*mega", testo, re.M):
+            print("ERRORE: archivio.py non deve poter raggiungere MEGA")
+            errori += 1
 
 # 8. il repository è pubblico: nessuna email reale nei file
 ammesse = {"noreply@anthropic.com", "nome@dominio.it"}
@@ -193,6 +198,61 @@ for cartella_, _, nomi in os.walk(radice):
         for e in set(re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z.]{2,}", testo)) - ammesse:
             print(f"ERRORE: email nel repository pubblico: {e} ({n})")
             errori += 1
+
+# 9. esporta/importa i volti: solo dentro dati/ e primi_piani/, mai fuori
+import tempfile, zipfile, json as _json  # noqa: E401,E402
+from smistafoto import archivio  # noqa: E402
+
+with tempfile.TemporaryDirectory() as t:
+    a, b = os.path.join(t, "a"), os.path.join(t, "b")
+    for base in (a, b):
+        os.makedirs(os.path.join(base, "primi_piani"))
+        open(os.path.join(base, "primi_piani", "LEGGI.txt"), "w").write("x")
+    os.makedirs(os.path.join(a, "dati", "tmp_imparare"))
+    os.makedirs(os.path.join(a, "primi_piani", "BIANCHI"))
+    open(os.path.join(a, "dati", "riferimenti_auraface.json"), "w").write('{"BIANCHI": {}}')
+    open(os.path.join(a, "dati", "tmp_imparare", "x.jpg"), "w").write("tmp")
+    open(os.path.join(a, "primi_piani", "BIANCHI", "1.jpg"), "w").write("foto")
+    os.makedirs(os.path.join(b, "dati"))
+    open(os.path.join(b, "dati", "riferimenti_auraface.json"), "w").write('{"VECCHIO": {}}')
+    os.makedirs(os.path.join(b, "primi_piani", "VECCHIO"))
+    z = os.path.join(t, "volti.zip")
+    archivio.esporta(a, z, persone=1)
+    nomi = zipfile.ZipFile(z).namelist()
+    if any("tmp_imparare" in n for n in nomi):
+        print("ERRORE: l'esportazione contiene file temporanei"); errori += 1
+    archivio.importa(b, z, os.path.join(b, "backup_volti"))
+    ok = (open(os.path.join(b, "dati", "riferimenti_auraface.json")).read() == '{"BIANCHI": {}}'
+          and os.path.exists(os.path.join(b, "primi_piani", "BIANCHI", "1.jpg"))
+          and not os.path.exists(os.path.join(b, "primi_piani", "VECCHIO"))
+          and os.path.exists(os.path.join(b, "primi_piani", "LEGGI.txt"))
+          and len(os.listdir(os.path.join(b, "backup_volti"))) == 1)
+    print("ok  esporta e importa i volti, con copia di sicurezza" if ok else "ERRORE: esporta/importa i volti")
+    errori += 0 if ok else 1
+    manifesto = _json.dumps({"tipo": archivio.TIPO})
+    for nome_cattivo in ("../fuori.txt", "dati/../../fuori.txt", "/etc/fuori", "config.json",
+                         "smistafoto/mega.py", "C:/fuori.txt", "dati\\..\\fuori.txt"):
+        cattivo = os.path.join(t, "cattivo.zip")
+        with zipfile.ZipFile(cattivo, "w") as zz:
+            zz.writestr(archivio.MANIFESTO, manifesto)
+            zz.writestr("dati/riferimenti_auraface.json", "{}")
+            zz.writestr(nome_cattivo, "x")
+        deve_rifiutare_archivio = True
+        try:
+            archivio.importa(b, cattivo, os.path.join(b, "backup_volti"))
+        except RuntimeError:
+            deve_rifiutare_archivio = False
+        if deve_rifiutare_archivio or os.path.exists(os.path.join(t, "fuori.txt")):
+            print("ERRORE: archivio manomesso accettato:", nome_cattivo); errori += 1
+        else:
+            print("ok  rifiutato archivio con", nome_cattivo)
+    if open(os.path.join(b, "dati", "riferimenti_auraface.json")).read() != '{"BIANCHI": {}}':
+        print("ERRORE: un archivio rifiutato ha cambiato i volti"); errori += 1
+
+gi = open(os.path.join(radice, ".gitignore"), encoding="utf-8").read().split()
+for voce in ("dati/", "lavori/", "primi_piani/*/", "backup_volti/", "SmistaFoto_volti_*.zip"):
+    if voce not in gi:
+        print("ERRORE: .gitignore non esclude", voce); errori += 1
 
 print()
 print("TUTTO OK" if not errori else f"{errori} PROBLEMI")

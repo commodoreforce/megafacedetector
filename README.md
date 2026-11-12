@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **3.2.1** · 12 novembre 2026
+Versione **3.3** · 12 novembre 2026
 
 Smista Foto guarda le foto caricate dai fotografi su MEGA, riconosce giocatori e staff e
 copia ogni foto nella cartella personale di chi ne è protagonista:
@@ -46,11 +46,18 @@ La pagina **Cartelle** mostra tutte le cartelle caricate dai fotografi e quali s
 
 ## Nuovo computer
 
-I volti imparati, la regola scelta e le cartelle escluse stanno nella cartella `dati/`, solo
-su quel computer. Su un computer nuovo: installa, poi **copia la cartella `dati/`** (e
-`primi_piani/`, se ci sono) da un computer già configurato, prima del primo avvio. Così non serve
-rifare l'apprendimento. Contengono le impronte dei volti: passale con una chiavetta o una cartella
-interna, mai su GitHub o in chat.
+I volti imparati, la regola scelta e le cartelle escluse stanno nelle cartelle `dati/` e
+`primi_piani/`, solo su quel computer. Per non rifare l'apprendimento su un computer nuovo:
+
+1. sul computer già configurato: **Giocatori e staff → Esporta i volti** (il file
+   `SmistaFoto_volti_AAAAMMGG.zip` finisce nei Download);
+2. sul computer nuovo, dopo l'installazione: **Importa i volti** (nella pagina Inizio durante la
+   prima configurazione, oppure in Giocatori e staff) e scegli il file.
+
+L'importazione sostituisce i volti del computer, dopo averne salvato una copia in `backup_volti/`.
+Accetta solo file creati con «Esporta i volti» e scrive solo in `dati/` e `primi_piani/`; non usa
+MEGA. Il file contiene le impronte dei volti: spostalo con una chiavetta o una cartella interna,
+mai su GitHub, per email o in chat, e cancellalo dopo l'uso.
 
 ## Aggiornamento
 
@@ -127,6 +134,7 @@ installazione/            icona dell'app (scudetto del Cesena FC) per Mac e Wind
 
 ## Versioni
 
+- **3.3** (12 novembre 2026): «Esporta i volti» e «Importa i volti» per portare volti, primi piani e regole su un altro computer senza rifare l'apprendimento; copia di sicurezza automatica prima di importare; il test di sicurezza verifica che un archivio manomesso venga rifiutato.
 - **3.2.1** (12 novembre 2026): «Aggiorna» funziona anche quando la cronologia del repository viene ripulita.
 - **3.2** (12 novembre 2026): pagina «Cartelle» con lo stato di ogni partita e allenamento (copiata, già nelle cartelle dei giocatori, da confermare, da smistare) e «Smista» diretto; l'email di MEGA non è più scritta nel programma (si inserisce nell'app e resta sul computer); nomi inventati negli esempi; il test di sicurezza controlla che nel repository non finiscano email.
 - **3.1** (3 novembre 2026): marchio con lo scudetto del Cesena FC nell'app, nell'icona della scheda e nell'icona sulla Scrivania (Mac e Windows; per averla rilanciare l'installazione).

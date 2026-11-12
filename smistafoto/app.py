@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 import posixpath
+import shutil
 import threading
 import time
 import traceback
@@ -12,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from . import DATA_VERSIONE, VERSIONE
+from .archivio import esporta, importa
 from .flussi import (e_unica, panoramica, analizza_cartella, calibra_insieme, carica_lavoro, confronta, deboli, elenca_lavori,
                      esegui_copia, impara, ricava_evento, simula_copia, trova_cartella_esistente)
 from .finestra import apri_finestra as _apri_finestra
@@ -379,6 +381,39 @@ class App:
                 prova = json.load(fh)
         return dati_revisione(lavoro_id, lavoro, prova)
 
+    # ------------------------------------------------------------ volti su un altro computer
+
+    def esporta_volti(self):
+        """Crea lo zip con dati/ e primi_piani/. Solo sul computer: MEGA non c'entra."""
+        if not self.rif.info:
+            raise RuntimeError("Su questo computer non ci sono ancora volti imparati da esportare.")
+        tmp = os.path.join(self.qui, ".esportazione_tmp.zip")
+        r = esporta(self.qui, tmp, VERSIONE, len(self.rif.info), self.modello)
+        self.reg.ok(f"Volti esportati: {r['persone']} persone, {r['primi_piani']} primi piani.")
+        return tmp, time.strftime("SmistaFoto_volti_%Y%m%d.zip")
+
+    def importa_volti(self, percorso_zip):
+        with self._lucchetto:  # niente analisi o apprendimenti mentre sostituisco i volti
+            if self.attivita["in_corso"]:
+                raise RuntimeError("C'è un'attività in corso: aspetta che finisca e riprova.")
+            r = importa(self.qui, percorso_zip, os.path.join(self.qui, "backup_volti"), VERSIONE)
+            self.cfg = self._leggi_config()
+            self.rif = Riferimenti(self.dati, self.modello, 512 if self.modello == "auraface" else 128)
+            self.esclusi = []
+            if os.path.exists(self.file_esclusi):
+                with open(self.file_esclusi, encoding="utf-8") as f:
+                    self.esclusi = json.load(f)
+        m = r["manifesto"]
+        n = len(self.rif.info)
+        if n:
+            self.reg.ok(f"Volti importati: {n} persone (esportati il {m.get('creato_il', '?')}).")
+        elif m.get("modello") and m.get("modello") != self.modello:
+            raise RuntimeError(f"L'archivio contiene volti imparati con un altro modello ({m.get('modello')}): "
+                               "su questo computer vanno imparati di nuovo.")
+        if r["backup"]:
+            self.reg.info(f"I volti che c'erano prima sono salvati in {r['backup']}.")
+        return {"persone": n, "creato_il": m.get("creato_il"), "backup": r["backup"]}
+
     def _lavori(self):
         ora = time.time()
         if ora - self._cache_lavori[0] > 5 or self.attivita["in_corso"] != self._cache_lavori[2]:
@@ -450,6 +485,35 @@ def _gestore(app):
             n = int(self.headers.get("Content-Length", 0) or 0)
             return json.loads(self.rfile.read(n) or b"{}")
 
+        def _ricevi_file(self):
+            """Salva il file caricato in una cartella temporanea, a pezzi (può essere grande)."""
+            n = int(self.headers.get("Content-Length", 0) or 0)
+            if n <= 0 or n > 4 * 1024 ** 3:
+                raise RuntimeError("File vuoto o troppo grande.")
+            dest = os.path.join(app.qui, ".importazione_upload.zip")
+            with open(dest, "wb") as out:
+                resto = n
+                while resto:
+                    pezzo = self.rfile.read(min(resto, 1024 * 1024))
+                    if not pezzo:
+                        raise RuntimeError("Caricamento interrotto: riprova.")
+                    out.write(pezzo)
+                    resto -= len(pezzo)
+            return dest
+
+        def _invia_file(self, percorso, nome):
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Length", str(os.path.getsize(percorso)))
+                self.send_header("Content-Disposition", f'attachment; filename="{nome}"')
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                with open(percorso, "rb") as fh:
+                    shutil.copyfileobj(fh, self.wfile, 1024 * 1024)
+            finally:
+                os.remove(percorso)
+
         def _stessa_origine(self):
             # le richieste che cambiano qualcosa devono arrivare dall'app stessa
             origine = self.headers.get("Origin")
@@ -494,6 +558,16 @@ def _gestore(app):
                     n = int(self.headers.get("Content-Length", 0) or 0)
                     app.salva_primo_piano(q["persona"][0], q["nome"][0], self.rfile.read(n))
                     return self._invia({"ok": True})
+                if parti == ["api", "importa-volti"]:
+                    caricato = os.path.join(app.qui, ".importazione_upload.zip")
+                    try:
+                        return self._invia(app.importa_volti(self._ricevi_file()))
+                    finally:
+                        if os.path.exists(caricato):
+                            os.remove(caricato)
+                if parti == ["api", "esporta-volti"]:
+                    self._corpo()
+                    return self._invia_file(*app.esporta_volti())
                 c = self._corpo()
                 r = {"ok": True}
                 if parti == ["api", "collega"]:
