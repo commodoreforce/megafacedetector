@@ -31,6 +31,15 @@ info "macOS $(sw_vers -productVersion 2>/dev/null), processore $(uname -m)"
 # i file scaricati da internet sono «in quarantena»: la tolgo da questa cartella
 xattr -dr com.apple.quarantine "$QUI" 2>/dev/null && ok "Cartella sbloccata per l'uso"
 chmod +x "$QUI"/*.command 2>/dev/null
+case "$QUI" in
+  *"/Library/CloudStorage/"*|*"/Library/Mobile Documents/"*|*OneDrive*|*Dropbox*|*"Google Drive"*)
+    echo
+    echo "${Y}   ATTENZIONE: questa cartella si sincronizza con un cloud (iCloud, OneDrive o simili):${N}"
+    echo "${Y}   $QUI${N}"
+    echo "${Y}   I volti imparati sono dati personali di giocatori e staff e non devono finire lì.${N}"
+    echo "${Y}   Chiudi questa finestra, sposta tutta la cartella nella tua cartella Utente e rilancia l'installazione da lì.${N}"
+    read -r -p "   Se vuoi continuare lo stesso qui (sconsigliato), premi Invio. " _ ;;
+esac
 
 # ------------------------------------------------------------------ 2
 passo 2 "Cerco Python (serve a far girare Smista Foto)"

@@ -25,6 +25,17 @@ from .volti import Riferimenti, Volti, nome_modello, scarica_auraface
 PORTA = 8765
 
 
+def cartella_in_cloud(percorso):
+    """OneDrive, iCloud, Dropbox, Google Drive: la cartella si sincronizza con un cloud esterno al club."""
+    p = os.path.abspath(percorso).replace("\\", "/").lower()
+    for segno, nome in (("onedrive", "OneDrive"), ("/library/mobile documents/", "iCloud Drive"),
+                        ("/library/cloudstorage/", "una cartella sincronizzata nel cloud"),
+                        ("dropbox", "Dropbox"), ("google drive", "Google Drive"), ("googledrive", "Google Drive")):
+        if segno in p:
+            return nome
+    return None
+
+
 class App:
     def __init__(self, qui):
         self.qui = qui
@@ -33,6 +44,10 @@ class App:
         self.file_locali = os.path.join(self.dati, "impostazioni_locali.json")
         self.cfg = self._leggi_config()
         self.reg = Registro()
+        self.cloud = cartella_in_cloud(qui)
+        if self.cloud:
+            self.reg.avviso(f"Smista Foto è dentro {self.cloud}: i volti imparati (dati personali) vengono copiati "
+                            "nel cloud. Sposta la cartella fuori, ad esempio in C:\\SmistaFoto o nella tua cartella Utente.")
         self.conn = self.volti = None
         self.modello = nome_modello(self.cfg)
         self.rif = Riferimenti(self.dati, self.modello, 512 if self.modello == "auraface" else 128)
@@ -356,7 +371,7 @@ class App:
         a = dict(self.attivita)
         if a.get("inizio"):
             a["secondi"] = int(time.time() - a["inizio"])
-        return {"versione": VERSIONE, "data_versione": DATA_VERSIONE,
+        return {"versione": VERSIONE, "data_versione": DATA_VERSIONE, "cartella_cloud": self.cloud,
                 "modello": self.volti.nome if self.volti else self.modello,
                 "account": self.account, "problema": self.problema, "semaforo": semaforo,
                 "stato_mega": self.stato_mega, "stato_modello": self.stato_modello,

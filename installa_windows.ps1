@@ -27,6 +27,14 @@ Passo 1 "Controllo il computer"
 Info ("Windows " + [Environment]::OSVersion.Version + ", " + $env:PROCESSOR_ARCHITECTURE)
 Get-ChildItem -Path $Qui -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
 Ok "Cartella sbloccata per l'uso"
+if ($Qui -match 'OneDrive|Dropbox|Google Drive|iCloud') {
+  Write-Host ""
+  Write-Host "   ATTENZIONE: questa cartella si sincronizza con un cloud (OneDrive o simili):" -ForegroundColor Yellow
+  Write-Host "   $Qui" -ForegroundColor Yellow
+  Write-Host "   I volti imparati sono dati personali di giocatori e staff e non devono finire li'." -ForegroundColor Yellow
+  Write-Host "   Chiudi questa finestra, sposta tutta la cartella in C:\SmistaFoto e rilancia Installa_Windows.bat da li'." -ForegroundColor Yellow
+  Attendi "Se vuoi continuare lo stesso qui (sconsigliato),"
+}
 $winget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
 
 # ------------------------------------------------------------------ 2

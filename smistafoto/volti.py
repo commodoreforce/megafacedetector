@@ -98,11 +98,24 @@ def scarica_auraface(cartella_modelli, reg):
     return dest
 
 
+def _contenuto(percorso):
+    """Legge il modello con Python e lo passa a OpenCV già in memoria.
+    Su Windows OpenCV non apre i file se il percorso ha lettere accentate
+    (es. «OneDrive - Università di …»): così il percorso non conta più."""
+    with open(percorso, "rb") as f:
+        dati = f.read()
+    if len(dati) < 1000:
+        raise RuntimeError(f"Il file del modello {os.path.basename(percorso)} è vuoto o incompleto: "
+                           "chiudi Smista Foto e riaprilo, lo scarico di nuovo.")
+    return dati
+
+
 class _SFace:
     nome, dimensione = "SFace", 128
 
     def __init__(self, cartella_modelli):
-        self.rete = cv2.FaceRecognizerSF.create(os.path.join(cartella_modelli, MODELLO_SFACE), "")
+        self.rete = cv2.FaceRecognizerSF.create(
+            "onnx", np.frombuffer(_contenuto(os.path.join(cartella_modelli, MODELLO_SFACE)), np.uint8), np.empty(0, np.uint8))
 
     def impronta(self, immagine, volto):
         return self.rete.feature(self.rete.alignCrop(immagine, volto)).flatten()
@@ -113,12 +126,14 @@ class _AuraFace:
 
     def __init__(self, percorso):
         self.ort = None
+        dati = _contenuto(percorso)
         try:  # onnxruntime è più veloce; se manca (es. Python troppo nuovo) si usa OpenCV
             import onnxruntime
-            self.ort = onnxruntime.InferenceSession(percorso, providers=["CPUExecutionProvider"])
+            self.ort = onnxruntime.InferenceSession(dati, providers=["CPUExecutionProvider"])
             self.ingresso = self.ort.get_inputs()[0].name
         except Exception:
-            self.rete = cv2.dnn.readNetFromONNX(percorso)
+            self.ort = None
+            self.rete = cv2.dnn.readNetFromONNX(np.frombuffer(dati, np.uint8))
 
     def _rete(self, blob):
         if self.ort is not None:
@@ -143,7 +158,8 @@ class Volti:
     def __init__(self, cartella_modelli, cfg):
         self.cfg = cfg
         self.trova = cv2.FaceDetectorYN.create(
-            os.path.join(cartella_modelli, MODELLO_TROVA), "", (320, 320), 0.8, 0.3, 5000)
+            "onnx", np.frombuffer(_contenuto(os.path.join(cartella_modelli, MODELLO_TROVA)), np.uint8),
+            np.empty(0, np.uint8), (320, 320), 0.8, 0.3, 5000)
         if nome_modello(cfg) == "auraface":
             percorso = os.path.join(cartella_modelli, FILE_AURAFACE)
             if not os.path.exists(percorso):

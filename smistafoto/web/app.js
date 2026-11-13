@@ -384,11 +384,11 @@ V.home = {
   mostra(el) { this.el = el; this.chiave = ""; el.innerHTML = `<p class="tenue">Carico…</p>`; },
   aggiorna(s) {
     const pend = s.lavori.filter(l => !l.copiato && !l.prova);
-    const chiave = JSON.stringify([s.pronto, s.preparazione, s.persone, pend.map(l => l.id), s.regola, s.attivita.in_corso && s.attivita.tipo]);
+    const chiave = JSON.stringify([s.cartella_cloud, s.pronto, s.preparazione, s.persone, pend.map(l => l.id), s.regola, s.attivita.in_corso && s.attivita.tipo]);
     if (chiave === this.chiave) return; this.chiave = chiave;
     const el = this.el;
     if (!s.pronto) {
-      el.innerHTML = `<h1>Prima configurazione</h1><p class="tenue" style="margin-top:8px">Quattro passaggi, da fare una volta sola su questo computer. Ogni passo si spunta da solo quando è fatto.</p>
+      el.innerHTML = `${s.cartella_cloud ? `<div class="avviso giallo" style="margin-bottom:16px"><b>Smista Foto è dentro ${esc(s.cartella_cloud)}</b>I volti imparati e i primi piani sono dati personali di giocatori e staff: così vengono copiati in un cloud esterno al club, e la sincronizzazione può anche bloccare dei file mentre l'app li usa. Chiudi Smista Foto e sposta tutta la cartella fuori (ad esempio in <code>C:\\SmistaFoto</code> su Windows o nella cartella Utente sul Mac), poi ricrea il collegamento sulla Scrivania rilanciando l'installazione. Guida, sezione «Problemi frequenti».</div>` : ""}<h1>Prima configurazione</h1><p class="tenue" style="margin-top:8px">Quattro passaggi, da fare una volta sola su questo computer. Ogni passo si spunta da solo quando è fatto.</p>
         <div class="blocco" style="margin-top:20px" id="prep">${vistaPreparazione(s)}</div>
         ${s.persone.giocatori + s.persone.staff ? "" : `<div class="avviso info" style="margin-top:16px"><b>Hai già Smista Foto su un altro computer?</b>Non serve imparare i volti da capo. Sull'altro computer apri «Giocatori e staff» e premi «Esporta i volti», poi porta qui il file con una chiavetta.
           <div class="riga-btn"><button class="btn" id="bImportaPrep">Importa i volti da un file</button></div></div>`}
@@ -398,7 +398,7 @@ V.home = {
       return;
     }
     const deb = s.persone.deboli;
-    el.innerHTML = `<div class="benvenuto">
+    el.innerHTML = `${s.cartella_cloud ? `<div class="avviso giallo" style="margin-bottom:16px"><b>Smista Foto è dentro ${esc(s.cartella_cloud)}</b>I volti imparati e i primi piani sono dati personali di giocatori e staff: così vengono copiati in un cloud esterno al club, e la sincronizzazione può anche bloccare dei file mentre l'app li usa. Chiudi Smista Foto e sposta tutta la cartella fuori (ad esempio in <code>C:\\SmistaFoto</code> su Windows o nella cartella Utente sul Mac), poi ricrea il collegamento sulla Scrivania rilanciando l'installazione. Guida, sezione «Problemi frequenti».</div>` : ""}<div class="benvenuto">
       <section class="lancio"><img class="scudo" src="/web/scudetto.png" alt="" aria-hidden="true">
         <h1>Nuove foto da smistare?</h1>
         <p style="margin-top:12px">Scegli la cartella di una partita o di un allenamento su MEGA. Smista Foto riconosce giocatori e staff e ti propone dove copiare ogni foto. Non copia niente finché non confermi.</p>
