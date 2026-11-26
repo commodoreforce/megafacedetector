@@ -50,8 +50,9 @@ def _contesto_ssl():
         return ssl.create_default_context()
 
 
-def _scarica(url, attesa=30):
-    richiesta = urllib.request.Request(url, headers={"User-Agent": "SmistaFoto", "Cache-Control": "no-cache"})
+def _scarica(url, attesa=30, intestazioni=None):
+    richiesta = urllib.request.Request(url, headers={"User-Agent": "SmistaFoto", "Cache-Control": "no-cache",
+                                                     **(intestazioni or {})})
     if not url.startswith("https://"):
         with urllib.request.urlopen(url, timeout=attesa) as r:  # solo per le prove (file://)
             return r.read()
@@ -59,10 +60,21 @@ def _scarica(url, attesa=30):
         return r.read()
 
 
+def _file_pubblicato(percorso):
+    """Un file della versione pubblicata. Prima dall'API di GitHub (sempre aggiornata),
+    poi da raw.githubusercontent.com (può restare indietro di qualche minuto)."""
+    if "SMISTA_FONTE_AGGIORNAMENTI" not in os.environ:
+        try:
+            return _scarica(f"https://api.github.com/repos/{REPOSITORY}/contents/{percorso}?ref={RAMO}",
+                            intestazioni={"Accept": "application/vnd.github.raw"})
+        except Exception:
+            pass  # es. troppe richieste dalla stessa rete: va bene anche la copia in cache
+    return _scarica(URL_FILE + percorso)
+
+
 def novita(versione_attuale):
     """Controlla su GitHub se c'è una versione nuova. Solo lettura, nessun file cambiato."""
-    antiecache = "?t=%d" % time.time() if URL_FILE.startswith("http") else ""
-    testo = _scarica(URL_FILE + "smistafoto/__init__.py" + antiecache).decode("utf-8")
+    testo = _file_pubblicato("smistafoto/__init__.py").decode("utf-8")
     m = re.search(r'VERSIONE\s*=\s*"([^"]+)"', testo)
     if not m:
         raise RuntimeError("Non riesco a leggere la versione pubblicata.")
@@ -71,7 +83,7 @@ def novita(versione_attuale):
     cosa = []
     if numero(nuova) > numero(versione_attuale):
         try:
-            leggimi = _scarica(URL_FILE + "README.md").decode("utf-8")
+            leggimi = _file_pubblicato("README.md").decode("utf-8")
             sezione = leggimi.split("## Versioni", 1)[1]
             for riga in sezione.splitlines():
                 v = re.match(r"^- \*\*([\d.]+)\*\*\s*(\([^)]*\))?:?\s*(.*)$", riga.strip())
