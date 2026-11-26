@@ -483,7 +483,10 @@ V.smista = {
           <span class="aiuto-campo">${c.unica ? "Cartella unica per tutti gli allenamenti." : "Come la cartella nelle cartelle dei giocatori, es. SERIE BKT."}</span><span class="errore-campo" id="eComp"></span></div>
         <div class="campo"><label for="fEv">${c.unica ? "Data dell'allenamento" : "Nome della partita"}</label><input id="fEv" value="${esc(c.evento)}" autocomplete="off" ${c.unica ? 'inputmode="numeric" placeholder="es. 20261102"' : 'placeholder="es. G10_SUDTIROL_CESENA"'}>
           <span class="aiuto-campo">${c.unica ? "Anno, mese, giorno attaccati: 20261102." : "Maiuscolo, senza risultato. Viene ricavato dal nome della cartella."}</span><span class="errore-campo" id="eEv"></span></div>
-      </div></div>
+      </div>
+      ${S?.sponsor?.attivi ? `<label class="spunta" style="margin-top:20px"><input type="checkbox" id="fSponsor" ${memo("cercaSponsor") === false || !S.sponsor.radice ? "" : "checked"} ${S.sponsor.radice ? "" : "disabled"}> Cerca anche gli sponsor (${S.sponsor.attivi} attivi)
+        <span class="aiuto-campo">${S.sponsor.radice ? `Le foto migliori di ogni sponsor andranno in <span class="percorso" id="destS"></span> dopo la revisione. L'analisi dura circa un secondo in più a foto. Quali sponsor e quante foto: pagina <a href="#/sponsor">Sponsor</a>.` : "Su MEGA non trovo la cartella SPONSOR nella stagione: gli sponsor non possono essere smistati."}</span></label>` : ""}
+      </div>
       <div class="riga-btn" style="margin-top:20px"><button class="btn" id="bIndietro">Cambia cartella</button><button class="btn primo grande" id="bAvvia">Avvia l'analisi</button></div>
       <p class="tenue piccolo" style="margin-top:10px">L'analisi non copia nulla: alla fine rivedi tutto e confermi tu.</p>`;
     const fC = $("#fComp", el), fE = $("#fEv", el);
@@ -498,6 +501,7 @@ V.smista = {
       else if (!c.unica && /[\/\\*?]/.test(ev)) msg = "Il nome non può contenere / \\ * ?";
       $("#eEv", el).textContent = msg; fE.setAttribute("aria-invalid", !!msg); ok = ok && !msg;
       $("#dest", el).textContent = c.unica ? `PLAYERS / <persona> / ${comp || "?"}   (es. ${ev || "DATA"}_IMG_1234.jpg)` : `PLAYERS / <persona> / ${comp || "?"} / ${ev || "?"}`;
+      if ($("#destS", el)) $("#destS", el).textContent = (S.sponsor.radice.split("/").pop() || "SPONSOR") + (c.unica ? ` / <sponsor> / ${comp || "?"}` : ` / <sponsor> / ${comp || "?"} / ${ev || "?"}`);
       $("#bAvvia", el).disabled = !ok;
       return ok;
     };
@@ -508,7 +512,9 @@ V.smista = {
       if (!valida()) return;
       try {
         chiediNotifiche();
-        await api("/api/smista", {sorgente: c.sorgente, competizione: fC.value, evento: fE.value});
+        const cercaS = $("#fSponsor", el) ? $("#fSponsor", el).checked : false;
+        if ($("#fSponsor", el) && !$("#fSponsor", el).disabled) memo("cercaSponsor", cercaS);
+        await api("/api/smista", {sorgente: c.sorgente, competizione: fC.value, evento: fE.value, sponsor: cercaS});
         this.passo = 3; this.disegna();
       } catch (e) { errore(e); }
     };

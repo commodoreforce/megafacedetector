@@ -114,6 +114,32 @@ deve_rifiutare("sottocartella dentro ALLENAMENTI", lambda: m.copia(SRC, "/2026-2
 deve_passare("staff con evento", lambda: m.copia(SRC, "/2026-27/PLAYERS/_STAFF/VERDI/SERIE BKT/G10/a.jpg"))
 deve_rifiutare("senza cartelle uniche configurate", lambda: Mega("/2026-27/PLAYERS").copia(SRC, "/2026-27/PLAYERS/BIANCHI/ALLENAMENTI/a.jpg"))
 
+# 3c. area sponsor: stesse regole, solo dentro SPONSOR/<NOME>/<COMP>/<EVENTO> o SPONSOR/<NOME>/ALLENAMENTI
+deve_rifiutare("sponsor prima di impostare la cartella SPONSOR", lambda: m.copia(SRC, "/2026-27/SPONSOR/AMADORI/SERIE BKT/G10/a.jpg"))
+from smistafoto.mega import controlla_radice_sponsor  # noqa: E402
+deve_rifiutare("cartella sponsor troppo generica", lambda: m.imposta_radice_sponsor("/2026-27"))
+deve_rifiutare("cartella sponsor = radice", lambda: m.imposta_radice_sponsor("/"))
+deve_rifiutare("cartella sponsor dentro PLAYERS", lambda: m.imposta_radice_sponsor("/2026-27/PLAYERS/SPONSOR"))
+deve_rifiutare("cartella sponsor uguale a PLAYERS", lambda: m.imposta_radice_sponsor("/2026-27/PLAYERS"))
+deve_rifiutare("cartella sponsor che contiene PLAYERS", lambda: Mega("/2026-27/X/PLAYERS").imposta_radice_sponsor("/2026-27/X"))
+deve_rifiutare("cartella sponsor con jolly", lambda: m.imposta_radice_sponsor("/2026-27/SPONSOR*"))
+m.imposta_radice_sponsor("/2026-27/SPONSOR")
+deve_passare("copia in SPONSOR/AMADORI/SERIE BKT/G10_SUDTIROL_CESENA", lambda: m.copia(SRC, "/2026-27/SPONSOR/AMADORI/SERIE BKT/G10_SUDTIROL_CESENA/a.jpg"))
+deve_passare("copia in SPONSOR/AMADORI/ALLENAMENTI", lambda: m.copia(SRC, "/2026-27/SPONSOR/AMADORI/ALLENAMENTI/20261102_a.jpg"))
+deve_passare("crea SPONSOR/AMADORI/SERIE BKT/G10", lambda: m.crea_cartella("/2026-27/SPONSOR/AMADORI/SERIE BKT/G10"))
+deve_rifiutare("copia in SPONSOR/AMADORI/a.jpg", lambda: m.copia(SRC, "/2026-27/SPONSOR/AMADORI/a.jpg"))
+deve_rifiutare("copia in SPONSOR/a.jpg", lambda: m.copia(SRC, "/2026-27/SPONSOR/a.jpg"))
+deve_rifiutare("copia in SPONSOR/AMADORI/SERIE BKT senza evento", lambda: m.copia(SRC, "/2026-27/SPONSOR/AMADORI/SERIE BKT/a.jpg"))
+deve_rifiutare("sottocartella in SPONSOR/AMADORI/ALLENAMENTI", lambda: m.copia(SRC, "/2026-27/SPONSOR/AMADORI/ALLENAMENTI/X/a.jpg"))
+deve_rifiutare("creare SPONSOR/NUOVO (solo cartelle evento)", lambda: m.crea_cartella("/2026-27/SPONSOR/NUOVO"))
+deve_rifiutare("origine dentro SPONSOR", lambda: m.copia("/2026-27/SPONSOR/AMADORI/SERIE BKT/G01/a.jpg", DEST))
+deve_rifiutare("SPONSOR con '..' verso PLAYERS", lambda: m.copia(SRC, "/2026-27/SPONSOR/../PLAYERS/a.jpg"))
+deve_rifiutare("cartella simile ma diversa (SPONSOR2)", lambda: m.copia(SRC, "/2026-27/SPONSOR2/AMADORI/SERIE BKT/G10/a.jpg"))
+deve_rifiutare("non-foto in SPONSOR", lambda: m.copia(SRC, "/2026-27/SPONSOR/AMADORI/SERIE BKT/G10/a.mp4"))
+risposta_ls["/2026-27/SPONSOR/AMADORI/SERIE BKT/G10/b.jpg"] = (0, "b.jpg\n", "")
+deve_rifiutare("sovrascrivere in SPONSOR", lambda: m.copia(SRC, "/2026-27/SPONSOR/AMADORI/SERIE BKT/G10/b.jpg"))
+del risposta_ls["/2026-27/SPONSOR/AMADORI/SERIE BKT/G10/b.jpg"]
+
 # 4. mai sovrascrivere
 risposta_ls[DEST] = (0, "a.jpg\n", "")
 deve_rifiutare("destinazione già esistente", lambda: m.copia(SRC, DEST))
@@ -177,12 +203,12 @@ for nome in os.listdir(cartella):
         # flussi.py cancella le foto temporanee scaricate, volti.py salva il modello scaricato,
         # archivio.py e app.py sostituiscono dati/ e primi_piani/ quando si importano i volti
         for vietato in ("os.remove(", "shutil.rmtree(", "os.rename(", "os.replace("):
-            if vietato in testo and nome not in ("flussi.py", "volti.py", "archivio.py", "app.py"):
+            if vietato in testo and nome not in ("flussi.py", "volti.py", "archivio.py", "app.py", "sponsor.py"):
                 print(f"ERRORE: {nome} contiene {vietato}")
                 errori += 1
 
-        if nome == "archivio.py" and re.search(r"^\s*(from|import)\s+\S*mega", testo, re.M):
-            print("ERRORE: archivio.py non deve poter raggiungere MEGA")
+        if nome in ("archivio.py", "sponsor.py") and re.search(r"^\s*(from|import)\s+\S*mega", testo, re.M):
+            print(f"ERRORE: {nome} non deve poter raggiungere MEGA")
             errori += 1
 
 # 8. il repository è pubblico: nessuna email reale nei file
@@ -250,7 +276,7 @@ with tempfile.TemporaryDirectory() as t:
         print("ERRORE: un archivio rifiutato ha cambiato i volti"); errori += 1
 
 gi = open(os.path.join(radice, ".gitignore"), encoding="utf-8").read().split()
-for voce in ("dati/", "lavori/", "primi_piani/*/", "backup_volti/", "SmistaFoto_volti_*.zip"):
+for voce in ("dati/", "lavori/", "primi_piani/*/", "loghi/", "backup_volti/", "SmistaFoto_volti_*.zip"):
     if voce not in gi:
         print("ERRORE: .gitignore non esclude", voce); errori += 1
 

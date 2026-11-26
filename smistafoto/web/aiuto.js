@@ -2,6 +2,10 @@
 "use strict";
 
 window.GLOSSARIO = {
+  sponsor_parole: {titolo: "Cosa cerca", link: "sponsor", testo: "<p>Smista Foto legge le scritte nelle foto e le confronta con queste parole. Tollera una lettera letta male nelle parole lunghe e un logo coperto in parte (almeno il 70% della parola). Con l'immagine del logo e «Cerca anche il disegno» trova anche loghi senza scritte.</p>"},
+  sponsor_quante: {titolo: "Quante foto", link: "sponsor", testo: "<p>Quante foto Smista Foto propone per ogni partita o allenamento. Sceglie le migliori: logo grande, nitido e leggibile, meglio se con un nostro giocatore protagonista, senza doppioni della stessa raffica e mescolando maglie e cartelloni. Di solito tra 2 e 10, ma puoi mettere il numero che vuoi.</p>"},
+  sponsor_punteggio: {titolo: "Punteggio", link: "sponsor", testo: "<p>Da 0 a circa 125: quanto il logo è grande, nitido e letto con sicurezza, più un bonus se c'è un nostro giocatore protagonista e se il logo è sulla sua maglia. Serve a mettere in fila le foto, non è un voto assoluto.</p>"},
+  sponsor_scelte: {titolo: "Foto per gli sponsor", link: "sponsor", testo: "<p>Per ogni sponsor Smista Foto propone le foto migliori, quante ne hai chieste nella pagina Sponsor. Puoi toglierne o aggiungerne con un clic: «Altre foto» contiene tutte quelle in cui ha trovato il logo. Vengono copiate insieme a quelle dei giocatori, con la stessa simulazione.</p>"},
   protagonista: {titolo: "Protagonista", link: "glossario", testo: "<p>Smista Foto copia una foto nella cartella di una persona solo se lì è almeno un po' protagonista: il suo volto è tra i più grandi della foto, non è minuscolo ed è abbastanza a fuoco. Chi è sullo sfondo è una «comparsa» e non viene copiato.</p>"},
   comparsa: {titolo: "Comparse", link: "glossario", testo: "<p>Persone riconosciute ma piccole, sullo sfondo o fuori fuoco. Non vengono copiate, come fate a mano. Se una ti serve, cliccala: verrà copiata comunque.</p>"},
   dubbio: {titolo: "Da verificare", link: "revisione", testo: "<p>Volti che Smista Foto non riesce ad attribuire con sicurezza: di profilo, coperti, mossi, o simili a due persone. Scegli tu il nome giusto. Quelli che non decidi non vengono copiati.</p>"},
@@ -18,7 +22,7 @@ V.aiuto = {
     const voci = [
       ["inizio", "Come funziona"], ["configurazione", "Prima configurazione"], ["mega", "Collegamento a MEGA"],
       ["partite", "Smistare una partita"], ["allenamenti", "Smistare un allenamento"], ["revisione", "La revisione"],
-      ["cartelle", "Stato delle cartelle"], ["volti", "Giocatori e staff"], ["sicurezza", "Sicurezza dell'archivio"], ["prove", "Prove e regole"],
+      ["cartelle", "Stato delle cartelle"], ["volti", "Giocatori e staff"], ["sponsor", "Sponsor"], ["sicurezza", "Sicurezza dell'archivio"], ["prove", "Prove e regole"],
       ["problemi", "Problemi frequenti"], ["glossario", "Parole usate nell'app"],
     ];
     el.innerHTML = `<div class="aiuto"><nav aria-label="Indice della guida">${voci.map(([id, t]) => `<a href="#/aiuto/${id}">${t}</a>`).join("")}</nav><article>
@@ -85,12 +89,22 @@ V.aiuto = {
 <li><b>Computer nuovo:</b> non serve imparare di nuovo. Sul computer già pronto premi «Esporta i volti» (in fondo a questa pagina): nei Download trovi un file <code>SmistaFoto_volti_….zip</code> con volti, primi piani, regola scelta e cartelle escluse. Sul computer nuovo premi «Importa i volti» (anche dalla pagina Inizio, durante la prima configurazione) e scegli il file. I volti che c'erano prima vengono salvati nella cartella <code>backup_volti</code>.</li></ul>
 <div class="avviso giallo"><b>Il file esportato contiene le impronte dei volti delle persone</b>Spostalo con una chiavetta o una cartella interna del club, non mandarlo per email o chat e non caricarlo su GitHub. Dopo l'importazione cancellalo dai Download. Esportare e importare non usa MEGA.</div></section>
 
+<section id="a-sponsor"><h2>Sponsor</h2>
+<p>Ogni sponsor è una cartella in <code>SPONSOR</code> su MEGA, accanto a <code>PLAYERS</code>. Smista Foto trova da solo le cartelle che ci sono e le aggiunge alla pagina <b>Sponsor</b>, cercando la scritta uguale al nome.</p>
+<ul><li><b>Nuovo sponsor:</b> crea la cartella su MEGA (in maiuscolo) oppure premi «Aggiungi sponsor». Scrivi le parole del logo e, se vuoi, carica l'immagine del logo. Se la cartella su MEGA non c'è, viene creata alla prima copia.</li>
+<li><b>Quante foto:</b> si cambiano direttamente nell'elenco, separate per partite e allenamenti.</li>
+<li><b>Prova su una foto:</b> carica una foto dal computer e guarda cosa legge Smista Foto. In verde gli sponsor trovati, in grigio tutte le scritte lette. È il modo più rapido per capire se le parole da cercare sono giuste.</li>
+<li><b>Durante lo smistamento</b> lascia spuntato «Cerca anche gli sponsor». Nella revisione, sotto i volti da verificare, trovi un riquadro per sponsor con le foto scelte e le altre in cui c'è il logo.</li>
+<li><b>Dove finiscono:</b> <code>SPONSOR / sponsor / competizione / partita</code>, oppure <code>SPONSOR / sponsor / ALLENAMENTI</code> con la data davanti al nome del file.</li>
+<li><b>Mettere in pausa</b> uno sponsor (per esempio a fine contratto) lo esclude dalle ricerche senza perdere le impostazioni. Su MEGA non cambia nulla.</li></ul>
+<p>Le scritte molto piccole, piegate o coperte sono le più difficili: per queste conviene controllare «Altre foto» nella revisione. Impostazioni e loghi restano su questo computer e passano su un altro con «Esporta i volti».</p></section>
+
 <section id="a-sicurezza"><h2>Sicurezza dell'archivio</h2>
 <p>MEGA è l'archivio storico del club, senza altre copie. Per questo Smista Foto ha regole rigide scritte nel programma e controllate prima di ogni comando:</p>
 <ul><li>Usa solo comandi per leggere, scaricare sul computer, creare cartelle e copiare. Qualsiasi altro comando viene rifiutato prima di partire.</li>
 <li><b>Non cancella, non sposta e non rinomina nulla su MEGA.</b> Queste funzioni non esistono nel programma.</li>
 <li><b>Non sovrascrive mai:</b> prima di ogni copia controlla che il file non ci sia già. Nel dubbio, non copia.</li>
-<li>Scrive solo in <code>PLAYERS / persona / competizione / partita</code> oppure in <code>PLAYERS / persona / ALLENAMENTI</code>. Le cartelle dei fotografi vengono solo lette.</li>
+<li>Scrive solo in <code>PLAYERS / persona / competizione / partita</code> oppure in <code>PLAYERS / persona / ALLENAMENTI</code>, e per gli sponsor in <code>SPONSOR / sponsor / competizione / partita</code> o <code>SPONSOR / sponsor / ALLENAMENTI</code>. Le cartelle dei fotografi vengono solo lette.</li>
 <li>Le foto scaricate per l'analisi restano sul computer solo il tempo necessario.</li>
 <li>Le «impronte» dei volti sono numeri, non foto, e restano solo su questo computer. I volti di avversari e tifosi vengono scartati subito.</li></ul></section>
 

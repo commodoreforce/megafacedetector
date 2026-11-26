@@ -5,16 +5,18 @@ SICUREZZA DEL CLOUD — regole rigide, verificate prima di ogni comando:
      get, preview (download sul computer), mkdir, cp (creazione di cose nuove).
      Qualsiasi altro comando (rm, mv, put, sync, backup, share, export, import,
      transfers, ...) viene rifiutato dal programma prima di partire.
-  2. Si scrive SOLO dentro la cartella dei giocatori (es. /2026-27/PLAYERS),
-     e solo in sottocartelle di evento: PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>/.
+  2. Si scrive SOLO dentro la cartella dei giocatori (es. /2026-27/PLAYERS) e, se c'è,
+     dentro la cartella degli sponsor (es. /2026-27/SPONSOR), e solo in sottocartelle
+     di evento: PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>/ o SPONSOR/<NOME>/<COMPETIZIONE>/<EVENTO>/.
      Unica eccezione: le "cartelle uniche" elencate in config.json (es. ALLENAMENTI),
-     dove i file vanno direttamente in PLAYERS/<NOME>/ALLENAMENTI/.
+     dove i file vanno direttamente in PLAYERS/<NOME>/ALLENAMENTI/ (o SPONSOR/<NOME>/ALLENAMENTI/).
   3. Una copia non sovrascrive MAI: prima si verifica su MEGA che il file di
      destinazione non esista; se esiste, o se la verifica non è possibile,
      la copia non si fa.
   4. Percorsi con caratteri jolly (* ?) sono rifiutati, per evitare che un
      comando agisca su più file del previsto.
-  5. Le cartelle di origine (MATCH/...) vengono solo lette e scaricate.
+  5. Le cartelle di origine (MATCH/...) vengono solo lette e scaricate; non possono
+     stare dentro PLAYERS o SPONSOR.
 Nessuna funzione del programma cancella, sposta o rinomina file su MEGA.
 """
 
@@ -91,7 +93,35 @@ def _livelli_sotto(percorso, radice):
     return len(p) - len(r)
 
 
-class Mega:
+def controlla_radice_sponsor(radice_sponsor, radice_giocatori):
+    """La cartella degli sponsor deve essere specifica e separata da quella dei giocatori."""
+    r = _pulito(radice_sponsor)
+    if r.count("/") < 2:
+        raise OperazioneVietata("La cartella degli sponsor è troppo generica.")
+    if _livelli_sotto(r, radice_giocatori) is not None or _livelli_sotto(radice_giocatori, r) is not None \
+            or r == _pulito(radice_giocatori):
+        raise OperazioneVietata("La cartella degli sponsor non può stare dentro (o contenere) quella dei giocatori.")
+    return r
+
+
+class _Regole:
+    """Le regole di scrittura comuni a Mega e CartellaLocale."""
+    radice_sponsor = None
+
+    def imposta_radice_sponsor(self, radice):
+        self.radice_sponsor = controlla_radice_sponsor(radice, self.radice_scrittura) if radice else None
+
+    def radici(self):
+        return [self.radice_scrittura] + ([self.radice_sponsor] if self.radice_sponsor else [])
+
+    def scrittura_consentita(self, percorso, e_file):
+        return any(_scrittura_consentita(percorso, r, self.cartelle_uniche, e_file) for r in self.radici())
+
+    def origine_consentita(self, origine):
+        return all(_livelli_sotto(origine, r) is None for r in self.radici())
+
+
+class Mega(_Regole):
     """Usa i comandi di MEGAcmd, con le regole di sicurezza descritte sopra."""
 
     temporaneo = True  # i file scaricati sul computer si cancellano dopo l'uso
@@ -145,10 +175,10 @@ class Mega:
         return r.returncode, _decodifica(r.stdout), _decodifica(r.stderr)
 
     def _controlla_scrittura(self, percorso, e_file):
-        if not _scrittura_consentita(percorso, self.radice_scrittura, self.cartelle_uniche, e_file):
+        if not self.scrittura_consentita(percorso, e_file):
             raise OperazioneVietata(
                 f"Scrittura fuori dalle cartelle consentite: {percorso} "
-                f"(consentito solo dentro {self.radice_scrittura}/<NOME>/<COMPETIZIONE>/<EVENTO>"
+                f"(consentito solo dentro {' e '.join(self.radici())}/<NOME>/<COMPETIZIONE>/<EVENTO>"
                 + (" o " + ", ".join(f"<NOME>/{c}" for c in sorted(self.cartelle_uniche)) if self.cartelle_uniche else "")
                 + ")")
 
@@ -257,8 +287,8 @@ class Mega:
         """Le stesse regole della copia, senza copiare: usata anche dalla simulazione."""
         origine, destinazione = _pulito(origine), _pulito(destinazione)
         self._controlla_scrittura(destinazione, e_file=True)
-        if _livelli_sotto(origine, self.radice_scrittura) is not None:
-            raise OperazioneVietata("Le foto di origine non possono stare dentro PLAYERS.")
+        if not self.origine_consentita(origine):
+            raise OperazioneVietata("Le foto di origine non possono stare dentro PLAYERS o SPONSOR.")
         if not e_foto(destinazione):
             raise OperazioneVietata(f"La destinazione non è una foto: {destinazione}")
         return origine, destinazione
@@ -273,7 +303,7 @@ class Mega:
             raise RuntimeError(err.strip() or "copia non riuscita")
 
 
-class CartellaLocale:
+class CartellaLocale(_Regole):
     """SOLO PER I TEST: stessa interfaccia, su una cartella del computer.
     Anche qui non si cancella e non si sovrascrive nulla."""
 
@@ -333,15 +363,15 @@ class CartellaLocale:
         return self._vero(remota)
 
     def crea_cartella(self, cartella):
-        if not _scrittura_consentita(cartella, self.radice_scrittura, self.cartelle_uniche, False):
+        if not self.scrittura_consentita(cartella, False):
             raise OperazioneVietata(f"Scrittura fuori dalle cartelle consentite: {cartella}")
         os.makedirs(self._vero(cartella), exist_ok=True)
 
     def verifica_copia(self, origine, destinazione):
-        if not _scrittura_consentita(destinazione, self.radice_scrittura, self.cartelle_uniche, True):
+        if not self.scrittura_consentita(destinazione, True):
             raise OperazioneVietata(f"Scrittura fuori dalle cartelle consentite: {destinazione}")
-        if _livelli_sotto(origine, self.radice_scrittura) is not None:
-            raise OperazioneVietata("Le foto di origine non possono stare dentro PLAYERS.")
+        if not self.origine_consentita(origine):
+            raise OperazioneVietata("Le foto di origine non possono stare dentro PLAYERS o SPONSOR.")
         if not e_foto(destinazione):
             raise OperazioneVietata(f"La destinazione non è una foto: {destinazione}")
         return origine, destinazione

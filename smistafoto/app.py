@@ -10,7 +10,7 @@ import threading
 import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from . import DATA_VERSIONE, VERSIONE
 from .archivio import esporta, importa
@@ -19,6 +19,7 @@ from .flussi import (e_unica, panoramica, analizza_cartella, calibra_insieme, ca
 from .finestra import apri_finestra as _apri_finestra
 from .mega import collegamento, normalizza
 from .registro import Registro
+from .sponsor import ElencoSponsor, Lettore, Loghi, sponsor_nella_foto
 from .revisione import dati_revisione
 from .volti import Riferimenti, Volti, nome_modello, scarica_auraface
 
@@ -65,6 +66,11 @@ class App:
             with open(self.file_esclusi, encoding="utf-8") as f:
                 self.esclusi = json.load(f)
         self.primi_piani = os.path.join(qui, "primi_piani")
+        self.loghi = os.path.join(qui, "loghi")
+        self.sponsor = ElencoSponsor(self.dati, self.loghi)
+        self.radice_sponsor = None      # es. /2026-27/SPONSOR, trovata su MEGA al collegamento
+        self.sponsor_su_mega = []       # le cartelle sponsor che esistono su MEGA
+        self.lettore = None
 
     # ------------------------------------------------------------ attività
 
@@ -122,6 +128,7 @@ class App:
             self.account = chi
             self.stato_mega = "ok"
             self.reg.ok(f"Collegato a MEGA come {chi}.")
+            self._trova_sponsor(silenzioso)
             if self.volti is None:
                 try:
                     if self.modello == "auraface":
@@ -146,6 +153,161 @@ class App:
             else:
                 self.reg.info("Non conosco ancora nessun volto: premi «Impara i volti».")
         self.avvia("collegamento", lavoro)
+
+    # ------------------------------------------------------------ sponsor
+
+    def _trova_sponsor(self, silenzioso=False):
+        """Cerca la cartella degli sponsor nella stagione (es. /2026-27/SPONSOR) e i nomi
+        delle cartelle sponsor che contiene. Solo lettura. Gli sponsor nuovi trovati su MEGA
+        vengono aggiunti con le impostazioni di partenza (parola = nome, 4 foto a partita, 2 ad allenamento)."""
+        radice = (self.cfg.get("cartella_sponsor") or "").strip()
+        try:
+            if not radice:
+                stagione = posixpath.dirname(self.cfg["cartella_giocatori"].rstrip("/"))
+                nomi = [n for n in self.conn.elenca_nomi(stagione) if n.upper().startswith("SPONSOR")]
+                radice = posixpath.join(stagione, sorted(nomi, key=len)[0]) if nomi else ""
+            if not radice:
+                self.radice_sponsor, self.sponsor_su_mega = None, []
+                if self.sponsor.voci and not silenzioso:
+                    self.reg.avviso("Non trovo la cartella SPONSOR nella stagione su MEGA: gli sponsor non vengono smistati.")
+                return
+            self.conn.imposta_radice_sponsor(radice)
+            cartelle, _ = self.conn.elenca_cartelle(radice)
+        except Exception as e:
+            self.radice_sponsor, self.sponsor_su_mega = None, []
+            self.reg.avviso(f"Cartella degli sponsor non utilizzabile: {e}")
+            return
+        self.radice_sponsor = radice
+        self.sponsor_su_mega = sorted(cartelle)
+        nuovi = []
+        for nome in cartelle:
+            try:
+                pulito = ElencoSponsor.nome_pulito(nome)
+            except ValueError:
+                continue
+            if pulito == nome and nome not in self.sponsor.voci:
+                self.sponsor.imposta(nome)
+                nuovi.append(nome)
+        if nuovi:
+            self.sponsor.salva()
+            self.reg.ok(f"Trovati su MEGA {len(nuovi)} sponsor nuovi: {', '.join(nuovi)}. "
+                        "Nella pagina Sponsor puoi aggiungere i loghi e scegliere quante foto prendere.")
+        elif not silenzioso and self.sponsor.attivi():
+            self.reg.info(f"Sponsor: {len(self.sponsor.attivi())} attivi, cartella {radice}.")
+
+    def _prepara_lettore(self):
+        if self.lettore is None:
+            self.lettore = Lettore(os.path.join(self.qui, "modelli"))
+        return self.lettore
+
+    def dati_sponsor(self):
+        elenco = []
+        for nome, v in sorted(self.sponsor.voci.items()):
+            elenco.append({"nome": nome, **v, "su_mega": nome in self.sponsor_su_mega,
+                           "loghi": [os.path.basename(f) for f in self.sponsor.loghi(nome)]})
+        solo_mega = [n for n in self.sponsor_su_mega if n not in self.sponsor.voci]
+        return {"radice": self.radice_sponsor, "elenco": elenco, "non_validi": solo_mega,
+                "collegato": bool(self.account)}
+
+    def salva_sponsor(self, c):
+        if self.attivita["in_corso"] and self.attivita["tipo"] in ("smista", "prova"):
+            raise RuntimeError("C'è un'analisi in corso: modifica gli sponsor quando finisce.")
+        nome = ElencoSponsor.nome_pulito(c.get("nome", ""))
+        if c.get("nuovo") and nome in self.sponsor.voci:
+            raise RuntimeError(f"{nome} c'è già: modificalo dall'elenco.")
+        parole = c.get("parole")
+        if isinstance(parole, str):
+            parole = [p for p in parole.replace(";", ",").split(",")]
+        self.sponsor.imposta(nome, parole=parole, foto_partita=c.get("foto_partita"),
+                             foto_allenamento=c.get("foto_allenamento"), attivo=c.get("attivo"),
+                             disegno=c.get("disegno"))
+        self.sponsor.salva()
+        self.reg.ok(f"Sponsor {nome} salvato." + ("" if nome in self.sponsor_su_mega or not self.radice_sponsor else
+                    f" Su MEGA la cartella {nome} non c'è ancora: verrà creata alla prima copia."))
+        return {"nome": nome}
+
+    def elimina_sponsor(self, nome):
+        if nome not in self.sponsor.voci:
+            raise RuntimeError("Sponsor sconosciuto.")
+        del self.sponsor.voci[nome]
+        self.sponsor.salva()
+        cartella = os.path.join(self.loghi, nome)
+        if os.path.isdir(cartella):
+            shutil.rmtree(cartella)
+        self.reg.info(f"Sponsor {nome} tolto da Smista Foto (su questo computer). Su MEGA non cambia nulla.")
+        if nome in self.sponsor_su_mega:
+            self.reg.info(f"La cartella {nome} esiste ancora su MEGA: al prossimo collegamento verrà ritrovata.")
+
+    def salva_logo(self, nome, nome_file, dati):
+        if nome not in self.sponsor.voci:
+            raise RuntimeError("Sponsor sconosciuto.")
+        if not dati or len(dati) > 20 * 1024 * 1024:
+            raise RuntimeError("File vuoto o troppo grande (massimo 20 MB).")
+        from io import BytesIO
+        from PIL import Image
+        try:
+            img = Image.open(BytesIO(dati))
+            img.load()
+        except Exception:
+            raise RuntimeError(f"{nome_file}: non è un'immagine (servono PNG, JPG o WEBP; per i loghi vettoriali esporta un PNG).")
+        if max(img.size) < 80:
+            raise RuntimeError(f"{nome_file}: immagine troppo piccola, serve almeno 80 pixel.")
+        img.thumbnail((1600, 1600))
+        cartella = os.path.join(self.loghi, nome)
+        os.makedirs(cartella, exist_ok=True)
+        base = "".join(ch for ch in os.path.splitext(os.path.basename(nome_file.replace("\\", "/")))[0]
+                       if ch.isalnum() or ch in "-_")[:40] or "logo"
+        destinazione = os.path.join(cartella, base + ".png")
+        i = 2
+        while os.path.exists(destinazione):
+            destinazione = os.path.join(cartella, f"{base}_{i}.png")
+            i += 1
+        img.convert("RGBA").save(destinazione)
+        self.reg.info(f"{nome}: aggiunto il logo {os.path.basename(destinazione)}.")
+        return os.path.basename(destinazione)
+
+    def togli_logo(self, nome, file):
+        f = os.path.join(self.loghi, nome, os.path.basename(file))
+        if nome in self.sponsor.voci and os.path.isfile(f):
+            os.remove(f)
+
+    def file_logo(self, nome, file):
+        f = os.path.join(self.loghi, os.path.basename(nome), os.path.basename(file))
+        return f if os.path.isfile(f) else None
+
+    def prova_sponsor(self, dati):
+        """Cerca gli sponsor in una foto caricata dal computer: per capire cosa vede il programma."""
+        from io import BytesIO
+        from PIL import Image, ImageOps
+        import numpy as np
+        if not dati or len(dati) > 60 * 1024 * 1024:
+            raise RuntimeError("File vuoto o troppo grande.")
+        try:
+            img = np.array(ImageOps.exif_transpose(Image.open(BytesIO(dati))).convert("RGB"))[:, :, ::-1].copy()
+        except Exception:
+            raise RuntimeError("Non riesco ad aprire la foto.")
+        attivi = self.sponsor.attivi()
+        if not attivi:
+            raise RuntimeError("Non ci sono sponsor attivi da cercare.")
+        t = time.time()
+        letture = self._prepara_lettore().leggi(img, self.cfg.get("lato_lungo_sponsor", 2048))
+        loghi = Loghi(self.sponsor)
+        disegni = loghi.cerca(img) if loghi else {}
+        volti = []
+        if self.volti is not None:
+            h, w = img.shape[:2]
+            s = min(1.0, self.cfg["lato_lungo_analisi"] / max(h, w))
+            import cv2
+            piccola = cv2.resize(img, (int(w * s), int(h * s))) if s < 1 else img
+            self.volti.trova.setInputSize((piccola.shape[1], piccola.shape[0]))
+            _, tv = self.volti.trova.detect(piccola)
+            volti = [{"riquadro": [float(v) / s for v in f[:4]]} for f in (tv if tv is not None else [])]
+        trovati = sponsor_nella_foto(img, letture, disegni, attivi, volti, set())
+        H, W = img.shape[:2]
+        return {"trovati": trovati, "secondi": round(time.time() - t, 1),
+                "letture": [{"testo": l["testo"], "affidabilita": l["affidabilita"],
+                             "box": [round(l["riquadro"][0] / W, 4), round(l["riquadro"][1] / H, 4),
+                                     round(l["riquadro"][2] / W, 4), round(l["riquadro"][3] / H, 4)]} for l in letture]}
 
     def impara(self, tutti, solo=None):
         self._serve_collegamento()
@@ -208,8 +370,18 @@ class App:
         return {"sorgente": sorgente, "competizione": comp, "evento": evento, "esistente": esistente,
                 "unica": unica}
 
-    def smista(self, sorgente, comp, evento, prova_su=None):
+    def smista(self, sorgente, comp, evento, prova_su=None, cerca_sponsor=True):
         self._serve_collegamento()
+        sponsor = None
+        if cerca_sponsor and not prova_su and self.sponsor.attivi():
+            if not self.radice_sponsor:
+                self.reg.avviso("Gli sponsor non vengono cercati: su MEGA non trovo la cartella SPONSOR nella stagione.")
+            else:
+                try:
+                    sponsor = {"attivi": self.sponsor.attivi(), "lettore": self._prepara_lettore(),
+                               "loghi": Loghi(self.sponsor) or None, "radice": self.radice_sponsor}
+                except Exception as e:  # gli sponsor non devono impedire lo smistamento dei volti
+                    self.reg.avviso(f"Gli sponsor non vengono cercati: {e}")
         comp, evento = comp.strip().upper(), evento.strip().upper()
         unica = e_unica(self.cfg, comp)
         if not comp or not evento:
@@ -235,7 +407,7 @@ class App:
             else:
                 self.reg.info(f"Le foto andranno in <NOME>/{comp}/{evento}, ma solo dopo la tua revisione.")
             d = analizza_cartella(self.cfg, self.conn, self.volti, rif, normalizza(sorgente), comp, evento,
-                                  self.lavori, self.reg, prova_su=prova_su)
+                                  self.lavori, self.reg, prova_su=prova_su, sponsor=sponsor)
             self.attivita["lavoro"] = os.path.basename(d)
             if prova_su:
                 self.attivita["risultato"] = confronta(self.conn, d, prova_su, self.reg)
@@ -379,6 +551,7 @@ class App:
                 "regola": self._descrizione_regola(),
                 "persone": {"giocatori": g, "staff": len(self.rif.info) - g, "deboli": deboli(self.rif)},
                 "elenco": self._lista_persone(), "esclusi": sorted(self.esclusi),
+                "sponsor": {"attivi": len(self.sponsor.attivi()), "radice": self.radice_sponsor},
                 "attivita": a, "registro": self.reg.stato(dalla),
                 "lavori": self._lavori()}
 
@@ -394,7 +567,10 @@ class App:
         if os.path.exists(os.path.join(d, "prova.json")):
             with open(os.path.join(d, "prova.json"), encoding="utf-8") as fh:
                 prova = json.load(fh)
-        return dati_revisione(lavoro_id, lavoro, prova)
+        dati = dati_revisione(lavoro_id, lavoro, prova)
+        dati["loghi"] = {n: (self.sponsor.loghi(n) and os.path.basename(self.sponsor.loghi(n)[0])) or None
+                         for n in lavoro.get("sponsor", {})}
+        return dati
 
     # ------------------------------------------------------------ volti su un altro computer
 
@@ -547,6 +723,14 @@ def _gestore(app):
                     self._invia(app.stato(dalla))
                 elif parti == ["api", "cartelle"]:
                     self._invia(app.ultima_panoramica() or {})
+                elif parti == ["api", "sponsor"]:
+                    self._invia(app.dati_sponsor())
+                elif parti[0] == "logo" and len(parti) == 3:
+                    f = app.file_logo(unquote(parti[1]), unquote(parti[2]))
+                    if not f:
+                        return self._invia(b"", "text/plain", 404)
+                    with open(f, "rb") as fh:
+                        self._invia(fh.read(), "image/png")
                 elif parti[:2] == ["api", "lavoro"] and len(parti) == 3:
                     self._invia(app.dati_lavoro(parti[2]))
                 elif parti[0] == "l" and len(parti) == 2:  # vecchi collegamenti alla revisione
@@ -573,6 +757,15 @@ def _gestore(app):
                     n = int(self.headers.get("Content-Length", 0) or 0)
                     app.salva_primo_piano(q["persona"][0], q["nome"][0], self.rfile.read(n))
                     return self._invia({"ok": True})
+                if parti == ["api", "sponsor-logo"]:
+                    q = parse_qs(urlparse(self.path).query)
+                    n = int(self.headers.get("Content-Length", 0) or 0)
+                    return self._invia({"file": app.salva_logo(q["nome"][0], q["file"][0], self.rfile.read(n))})
+                if parti == ["api", "sponsor-prova"]:
+                    n = int(self.headers.get("Content-Length", 0) or 0)
+                    if n > 60 * 1024 * 1024:
+                        raise RuntimeError("Foto troppo grande.")
+                    return self._invia(app.prova_sponsor(self.rfile.read(n)))
                 if parti == ["api", "importa-volti"]:
                     caricato = os.path.join(app.qui, ".importazione_upload.zip")
                     try:
@@ -602,7 +795,13 @@ def _gestore(app):
                 elif parti == ["api", "controlla"]:
                     r = app.controlla(c.get("percorso", ""), bool(c.get("prova")))
                 elif parti == ["api", "smista"]:
-                    app.smista(c["sorgente"], c["competizione"], c["evento"])
+                    app.smista(c["sorgente"], c["competizione"], c["evento"], cerca_sponsor=c.get("sponsor", True))
+                elif parti == ["api", "sponsor-salva"]:
+                    r = app.salva_sponsor(c)
+                elif parti == ["api", "sponsor-elimina"]:
+                    app.elimina_sponsor(c["nome"])
+                elif parti == ["api", "sponsor-togli-logo"]:
+                    app.togli_logo(c["nome"], c["file"])
                 elif parti == ["api", "prova"]:
                     if not str(c.get("esistente", "")).strip():
                         raise RuntimeError("Indica la cartella della partita già smistata a mano.")

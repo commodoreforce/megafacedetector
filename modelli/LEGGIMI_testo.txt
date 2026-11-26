@@ -1,0 +1,9 @@
+Modelli per leggere le scritte degli sponsor
+
+testo_rileva_ppocrv3.onnx   = ch_PP-OCRv3_det_infer.onnx
+testo_leggi_ppocrv3.onnx    = ch_PP-OCRv3_rec_infer.onnx
+testo_alfabeto_ppocrv3.txt  = alfabeto del modello di lettura
+
+Provengono da PaddleOCR (https://github.com/PaddlePaddle/PaddleOCR), convertiti in ONNX dal
+progetto RapidOCR (pacchetto rapidocr_onnxruntime 1.2.3). Licenza Apache 2.0.
+Smista Foto li esegue con OpenCV.

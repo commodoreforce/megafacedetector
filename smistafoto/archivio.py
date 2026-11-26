@@ -15,7 +15,7 @@ import zipfile
 
 MANIFESTO = "smistafoto_volti.json"
 TIPO = "smistafoto-volti"
-RADICI = ("dati", "primi_piani")
+RADICI = ("dati", "primi_piani", "loghi")
 MAX_FILE = 50_000
 MAX_BYTE = 4 * 1024 ** 3          # 4 GB scompattati: ben oltre qualunque archivio reale
 SALTA_CARTELLE = {"tmp_imparare", "__pycache__"}
@@ -35,7 +35,7 @@ def _file_da_esportare(qui):
                 if os.path.islink(completo) or not os.path.isfile(completo):
                     continue
                 rel = os.path.relpath(completo, qui).replace(os.sep, "/")
-                if radice == "primi_piani" and rel.count("/") < 2:
+                if radice in ("primi_piani", "loghi") and rel.count("/") < 2:
                     continue  # LEGGI.txt e simili: fanno parte del programma, non dei volti
                 yield completo, rel
 
@@ -148,16 +148,21 @@ def importa(qui, percorso_zip, cartella_backup, versione_app=""):
             raise
         shutil.rmtree(vecchi, ignore_errors=True)
 
-        pp = os.path.join(qui, "primi_piani")
-        os.makedirs(pp, exist_ok=True)
-        for d in os.listdir(pp):
-            if os.path.isdir(os.path.join(pp, d)) and not os.path.islink(os.path.join(pp, d)):
-                shutil.rmtree(os.path.join(pp, d))
-        nuovi_pp = os.path.join(tmp, "primi_piani")
-        if os.path.isdir(nuovi_pp):
-            for d in os.listdir(nuovi_pp):
-                if os.path.isdir(os.path.join(nuovi_pp, d)):
-                    os.replace(os.path.join(nuovi_pp, d), os.path.join(pp, d))
+        # primi piani e loghi: si sostituiscono le cartelle per persona/sponsor.
+        # Un archivio vecchio senza loghi lascia i loghi che ci sono.
+        for radice in ("primi_piani", "loghi"):
+            nuovi = os.path.join(tmp, radice)
+            if radice == "loghi" and not os.path.isdir(nuovi):
+                continue
+            attuale = os.path.join(qui, radice)
+            os.makedirs(attuale, exist_ok=True)
+            for d in os.listdir(attuale):
+                if os.path.isdir(os.path.join(attuale, d)) and not os.path.islink(os.path.join(attuale, d)):
+                    shutil.rmtree(os.path.join(attuale, d))
+            if os.path.isdir(nuovi):
+                for d in os.listdir(nuovi):
+                    if os.path.isdir(os.path.join(nuovi, d)):
+                        os.replace(os.path.join(nuovi, d), os.path.join(attuale, d))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return {"manifesto": manifesto, "backup": os.path.relpath(backup, qui) if backup else None}

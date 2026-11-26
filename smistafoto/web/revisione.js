@@ -15,7 +15,10 @@ V.revisione = {
       dubbi: salvate.dubbi || {},                   // id volto -> persona, "" = non copiare
       recuperate: new Set(salvate.recuperate || []),// comparse da copiare comunque
       nessuno: salvate.nessuno || {},               // id foto -> persona (foto senza volti)
+      // sponsor -> foto scelte (all'inizio quelle proposte da Smista Foto)
+      sponsor: salvate.sponsor || Object.fromEntries(Object.entries(this.D.sponsor || {}).map(([n, v]) => [n, [...v.scelte]])),
     };
+    this._spAperti = new Set();
     this.solo_no = false; this.cerca = "";
     this.prepara(); this.disegna();
     this.tasti = e => this.tastiera(e);
@@ -26,7 +29,7 @@ V.revisione = {
   salva() {
     if (this.D.copiato || this.D.prova) return;
     const s = this.scelte;
-    memo("rev:" + this.id, {escluse: [...s.escluse], dubbi: s.dubbi, recuperate: [...s.recuperate], nessuno: s.nessuno});
+    memo("rev:" + this.id, {escluse: [...s.escluse], dubbi: s.dubbi, recuperate: [...s.recuperate], nessuno: s.nessuno, sponsor: s.sponsor});
   },
   prepara() {
     const D = this.D;
@@ -47,7 +50,7 @@ V.revisione = {
     el.innerHTML = `<div class="intesta"><h1>${esc(titolo)}</h1>
         <span class="dx">${D.prova ? `<span class="chip senza">Prova</span>` : D.copiato ? `<span class="chip verde">Copiata</span>` : `<span class="chip giallo">Da confermare</span>`}</span></div>
       <p class="tenue" style="margin-top:6px">${esc(D.competizione)}, ${D.foto.length} foto analizzate il ${esc(D.creato)}.
-        Destinazione: <code>PLAYERS / persona / ${esc(D.competizione)}${D.unica ? "" : " / " + esc(D.evento)}</code></p>
+        Destinazione: <code>PLAYERS / persona / ${esc(D.competizione)}${D.unica ? "" : " / " + esc(D.evento)}</code>${Object.keys(D.sponsor || {}).length ? ` e <code>SPONSOR / sponsor / ${esc(D.competizione)}${D.unica ? "" : " / " + esc(D.evento)}</code>` : ""}</p>
       ${D.copiato ? `<div class="avviso verde"><b>Queste foto sono già state copiate.</b>Qui puoi solo guardare. Per rifarlo, smista di nuovo la cartella: le foto già presenti vengono saltate.</div>` : ""}
       ${D.prova ? this.bannerProva() : ""}
       <div class="barra-strumenti">
@@ -56,10 +59,10 @@ V.revisione = {
         <button class="btn piatto" id="bTasti">Scorciatoie da tastiera</button>
         ${!this.solaLettura ? `<button class="btn piatto" id="bAnnulla" disabled>Annulla l'ultima scelta</button>` : ""}
       </div>
-      <div id="secDubbi"></div><div id="secSicure"></div><div id="secComparse"></div><div id="secVuote"></div>
+      <div id="secDubbi"></div><div id="secSponsor"></div><div id="secSicure"></div><div id="secComparse"></div><div id="secVuote"></div>
       ${this.solaLettura ? "" : `<div class="piede-revisione" id="piede"><div class="riep" id="riep"></div>
         <button class="btn primo grande" id="bCopia">Controlla e copia</button></div>`}`;
-    this.disegnaDubbi(); this.disegnaSicure(); this.disegnaComparse(); this.disegnaVuote(); this.riepilogo();
+    this.disegnaDubbi(); this.disegnaSponsor(); this.disegnaSicure(); this.disegnaComparse(); this.disegnaVuote(); this.riepilogo();
     $("#cercaR", el).oninput = e => { this.cerca = e.target.value.toLowerCase(); this.disegnaSicure(); this.disegnaComparse(); };
     $("#bSoloNo", el)?.addEventListener("click", () => { this.solo_no = !this.solo_no; this.disegna(); });
     $("#bTasti", el).onclick = () => this.mostraTasti();
@@ -213,6 +216,62 @@ V.revisione = {
     });
   },
 
+  /* ------------------------------------------------------------ sponsor */
+  disegnaSponsor() {
+    const box = $("#secSponsor", this.el), SP = this.D.sponsor || {};
+    const nomi = Object.keys(SP);
+    if (!nomi.length) { box.innerHTML = ""; return; }
+    const con = nomi.filter(n => SP[n].candidate.length), senza = nomi.filter(n => !SP[n].candidate.length);
+    box.innerHTML = `<section class="sezione"><h2>Sponsor ${q("sponsor_scelte")}</h2>
+      <p class="tenue" style="margin-top:6px">${this.solaLettura ? "Le foto con il bordo verde sono quelle scelte per ogni sponsor." : "Le foto con il bordo verde andranno nella cartella dello sponsor. Clicca una foto per toglierla o aggiungerla; la lente apre la foto intera con il logo evidenziato."}</p>
+      ${con.map(n => this.bloccoSponsor(n)).join("")}
+      ${senza.length ? `<p class="tenue piccolo" style="margin-top:10px">Nessuna foto con il logo di ${senza.map(esc).join(", ")}.</p>` : ""}</section>`;
+    $$("details[data-sp]", box).forEach(d => d.ontoggle = () => d.open ? this._spAperti.add(d.dataset.sp) : this._spAperti.delete(d.dataset.sp));
+    box.onclick = e => {
+      const b = e.target.closest(".scatto[data-sp]"); if (!b) return;
+      if (e.target.closest("[data-zoom]") || this.solaLettura) return this.anteprimaSponsor(b.dataset.sp, +b.dataset.f);
+      this.commutaSponsor(b.dataset.sp, +b.dataset.f);
+    };
+  },
+  bloccoSponsor(n) {
+    const v = this.D.sponsor[n], scelte = new Set(this.scelte.sponsor[n] || []);
+    const sc = v.candidate.filter(c => scelte.has(c.foto)), altre = v.candidate.filter(c => !scelte.has(c.foto));
+    const logo = this.D.loghi?.[n];
+    const chip = sc.length === v.quante ? "verde" : sc.length ? "giallo" : "rosso";
+    return `<div class="blocco-sponsor"><header>${logo ? `<img class="logo-mini" src="${logoUrl(n, logo)}" alt="">` : ""}<b>${esc(n)}</b>
+        <span class="tenue piccolo">logo in ${v.candidate.length} ${v.candidate.length === 1 ? "foto" : "foto"}</span>
+        <span class="conteggio chip ${chip}">${sc.length} ${sc.length === 1 ? "scelta" : "scelte"} su ${v.quante} richieste</span></header>
+      <div class="provino">${sc.map(c => this.scattoSponsor(n, c, true)).join("") || `<p class="tenue piccolo" style="margin:0">Nessuna foto scelta: ${esc(n)} non riceverà foto da questa ${this.D.unica ? "sessione" : "partita"}.</p>`}</div>
+      ${altre.length ? `<details class="cassetto" data-sp="${esc(n)}" ${this._spAperti.has(n) ? "open" : ""} style="margin:0 14px 12px"><summary>Altre foto con ${esc(n)} (${altre.length})</summary>
+        <div class="provino" style="padding:10px 0 0">${altre.map(c => this.scattoSponsor(n, c, false)).join("")}</div></details>` : ""}</div>`;
+  },
+  scattoSponsor(n, c, dentro) {
+    const f = this.fotoPer[c.foto], cx = (c.box[0] + c.box[2] / 2) * 100, cy = (c.box[1] + c.box[3] / 2) * 100;
+    const dove = c.tipo === "maglia" ? "maglia" : "cartellone";
+    return `<button type="button" class="scatto ${dentro ? "" : "non-scelta"}" data-sp="${esc(n)}" data-f="${c.foto}" aria-pressed="${dentro}"
+        aria-label="${esc(f.relativo)}, ${dove}, ${dentro ? "scelta per " + esc(n) : "non scelta"}" title="${esc(f.relativo)} · ${dove} · punteggio ${Math.round(c.punteggio * 100)}">
+      <img src="/l/${encodeURIComponent(this.id)}/m/${c.mini || f.anteprima}" alt="" loading="lazy" ${c.mini ? "" : `style="object-position:${cx.toFixed(0)}% ${cy.toFixed(0)}%"`}>
+      <span class="tipo">${dove}</span><span class="px tab-num">${Math.round(c.punteggio * 100)}</span><span class="zoom" data-zoom>${ICONA.zoom}</span></button>`;
+  },
+  commutaSponsor(n, fid) {
+    const prima = [...(this.scelte.sponsor[n] || [])];
+    const ora = prima.includes(fid) ? prima.filter(x => x !== fid) : [...prima, fid];
+    this.scelte.sponsor[n] = ora;
+    this.registraAnnulla(() => { this.scelte.sponsor[n] = prima; });
+    this.salva(); this.disegnaSponsor(); this.riepilogo();
+    $(`.scatto[data-sp="${CSS.escape(n)}"][data-f="${fid}"]`, this.el)?.focus();
+  },
+  async anteprimaSponsor(n, fid) {
+    const c = this.D.sponsor[n].candidate.find(x => x.foto === fid), f = this.fotoPer[fid];
+    const dentro = (this.scelte.sponsor[n] || []).includes(fid);
+    const v = await modale({titolo: `${n} · ${f.relativo}`, larga: true, corpo: `
+      <div class="foto-prova anteprima-sponsor"><img src="/l/${encodeURIComponent(this.id)}/m/${f.anteprima}" alt="Foto ${esc(f.relativo)}">
+        <svg viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"><polygon class="r-sponsor" points="${c.quad.map(p => p.join(",")).join(" ")}"/></svg></div>
+      <p class="tenue piccolo" style="margin-top:10px">${c.tipo === "maglia" ? "Logo su una persona" : "Logo su un cartellone o sullo sfondo"}. Scritta letta: «${esc(c.testo)}». Punteggio ${Math.round(c.punteggio * 100)}: conta quanto il logo è grande, nitido e leggibile, e se c'è un nostro giocatore protagonista.</p>`,
+      azioni: this.solaLettura ? [{testo: "Chiudi", valore: null}] : [{testo: "Chiudi", valore: null}, {testo: dentro ? `Togli da ${n}` : `Aggiungi a ${n}`, tipo: "primo", valore: "commuta"}]});
+    if (v === "commuta") this.commutaSponsor(n, fid);
+  },
+
   /* ------------------------------------------------------------ decisioni, annulla, riepilogo */
   decisioni() {
     const out = [], s = this.scelte;
@@ -223,14 +282,16 @@ V.revisione = {
       if (p) out.push({foto: v.foto, persona: p, volto: !v.solo_nome && (p === v.persona || v.alternative.some(a => a[0] === p)) ? v.id : null});
     }
     for (const [f, p] of Object.entries(s.nessuno)) if (p) out.push({foto: +f, persona: p});
+    for (const [n, ids] of Object.entries(s.sponsor || {})) if ((this.D.sponsor || {})[n]) for (const f of ids) out.push({foto: f, sponsor: n});
     const visti = new Set();
-    return out.filter(d => { const k = d.foto + "|" + d.persona; if (visti.has(k)) return false; visti.add(k); return true; });
+    return out.filter(d => { const k = d.foto + "|" + (d.persona ?? "S:" + d.sponsor); if (visti.has(k)) return false; visti.add(k); return true; });
   },
   riepilogo() {
     const r = $("#riep", this.el); if (!r) return;
-    const d = this.decisioni(), cartelle = new Set(d.map(x => x.persona)).size;
+    const d = this.decisioni(), cartelle = new Set(d.map(x => x.persona ?? "S:" + x.sponsor)).size;
+    const nSp = d.filter(x => x.sponsor).length;
     const nonDecisi = this.dubbi.filter(v => !(v.id in this.scelte.dubbi)).length;
-    r.innerHTML = `<b class="tab-num">${d.length} foto da copiare</b> in ${cartelle} cartelle` +
+    r.innerHTML = `<b class="tab-num">${d.length} foto da copiare</b> in ${cartelle} cartelle${nSp ? ` (${nSp} per gli sponsor)` : ""}` +
       (nonDecisi ? `<br><span style="color:var(--giallo)">${nonDecisi === 1 ? "1 volto ancora da verificare: se non lo decidi, non viene copiato." : nonDecisi + " volti ancora da verificare: se non li decidi, non vengono copiati."}</span>` : "<br>Tutti i volti da verificare sono decisi.");
     $("#bCopia", this.el).disabled = !d.length;
   },
@@ -272,7 +333,7 @@ V.revisione = {
       const tutti = $$(".scatto", this.el), i = tutti.indexOf(scatto);
       if (e.key === "ArrowRight") { e.preventDefault(); tutti[i + 1]?.focus(); }
       if (e.key === "ArrowLeft") { e.preventDefault(); tutti[i - 1]?.focus(); }
-      if (e.key.toLowerCase() === "v") { e.preventDefault(); this.apriAnteprima(scatto.dataset.g, +scatto.dataset.id); }
+      if (e.key.toLowerCase() === "v") { e.preventDefault(); if (scatto.dataset.sp) this.anteprimaSponsor(scatto.dataset.sp, +scatto.dataset.f); else this.apriAnteprima(scatto.dataset.g, +scatto.dataset.id); }
     } else if (e.key.toLowerCase() === "j" || e.key === "ArrowDown") {
       const prima = $$(".dubbio", this.el).find(c => !(this.D.volti[+c.dataset.v].id in this.scelte.dubbi)) || $(".dubbio, .scatto", this.el);
       if (prima && e.key.toLowerCase() === "j") { e.preventDefault(); prima.focus(); }
@@ -384,7 +445,7 @@ V.revisione = {
         <div class="${x.bloccata ? "rosso" : ""}"><span class="numero">${x.bloccata}</span><small>bloccate dalle regole di sicurezza</small></div></div>
       ${x.bloccata ? `<div class="avviso rosso"><b>${x.bloccata} copie sono bloccate dalle regole di sicurezza.</b>Non copio niente finché ci sono copie bloccate. Il dettaglio è qui sotto: <a href="#/aiuto/sicurezza">cosa può e non può fare Smista Foto</a>.</div>` : ""}
       ${nonDecisi ? `<div class="avviso giallo"><b>${nonDecisi === 1 ? "1 volto da verificare non è deciso." : nonDecisi + " volti da verificare non sono decisi."}</b>${nonDecisi === 1 ? "Quella foto non verrà copiata." : "Quelle foto non verranno copiate."} Puoi annullare e decidere.</div>` : ""}
-      <table><thead><tr><th>Persona</th><th>Cartella su MEGA</th><th>Da copiare</th><th>Già presenti</th></tr></thead><tbody>
+      <table><thead><tr><th>Cartella di</th><th>Cartella su MEGA</th><th>Da copiare</th><th>Già presenti</th></tr></thead><tbody>
       ${x.persone.map(p => `<tr><td><b>${esc(p.persona)}</b></td><td><span class="percorso">${esc(p.cartella)}</span>${p.nuova ? ` <span class="chip senza">nuova</span>` : ""}</td><td class="tab-num">${p.copierebbe}</td><td class="tab-num">${p.salterebbe}</td></tr>`).join("")}</tbody></table>
       <details class="cassetto"><summary>Foto per foto (${x.dettaglio.length})</summary><div class="dentro-cassetto"><table><tbody>${x.dettaglio.map(r => `<tr><td>${esc(r[0])}</td><td><span class="percorso">${esc(r[1])}</span></td><td>${esc(r[3])}</td></tr>`).join("")}</tbody></table></div></details>
       <p class="tenue piccolo" style="margin-top:12px">La copia avviene dentro MEGA: non sovrascrive niente, non cancella e non sposta niente.</p>`;

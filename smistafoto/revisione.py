@@ -8,7 +8,8 @@ def dati_revisione(lavoro_id, lavoro, prova=None):
     dati.update(id=lavoro_id, versione=VERSIONE, prova=bool(lavoro.get("prova_su")),
                 unica=bool(lavoro.get("unica")), creato=lavoro.get("creato", ""),
                 sorgente=lavoro.get("sorgente", ""),
-                cartelle_persone=lavoro.get("cartelle_persone", {}))
+                cartelle_persone=lavoro.get("cartelle_persone", {}),
+                sponsor=lavoro.get("sponsor", {}))
     prova = prova or {}
     dati["esiti"] = prova.get("esiti")
     dati["regole"] = prova.get("regole") or []

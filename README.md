@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **3.3.1** · 13 novembre 2026
+Versione **3.4** · 26 novembre 2026
 
 Smista Foto guarda le foto caricate dai fotografi su MEGA, riconosce giocatori e staff e
 copia ogni foto nella cartella personale di chi ne è protagonista:
@@ -8,6 +8,13 @@ copia ogni foto nella cartella personale di chi ne è protagonista:
 ```
 2026-27/MATCH/SERIEBKT/G10_Sudtirol_Cesena_1_1/Foto       →  PLAYERS/BIANCHI/SERIE BKT/G10_SUDTIROL_CESENA/
 2026-27/ALLENAMENTI/2026_11_Novembre/20261102              →  PLAYERS/BIANCHI/ALLENAMENTI/20261102_IMG_5169.jpg
+```
+
+Trova anche gli **sponsor** nelle foto (maglie, cartelloni fissi e luminosi) e mette le foto
+migliori di ognuno nella sua cartella, quante ne hai chieste:
+
+```
+2026-27/MATCH/SERIEBKT/G10_Sudtirol_Cesena_1_1/Foto       →  SPONSOR/AMADORI/SERIE BKT/G10_SUDTIROL_CESENA/  (es. le 4 migliori)
 ```
 
 Gira tutto sul computer: le foto non vengono mandate a nessun servizio esterno.
@@ -42,6 +49,23 @@ aperta** (è il motore dell'app), e poi l'app.
    quello che non va, poi **Controlla e copia** › riepilogo › **Copia su MEGA**.
 
 Le revisioni non finite restano in **Revisioni** e si riprendono da dove le avevi lasciate.
+
+### Sponsor
+
+Ogni sponsor è una cartella in `SPONSOR` su MEGA, accanto a `PLAYERS`: Smista Foto la trova da
+sola e aggiunge gli sponsor che contiene. Nella pagina **Sponsor**:
+
+- **Foto a partita / ad allenamento**: quante foto proporre (di solito tra 2 e 10, ma è libero).
+- **Modifica**: le scritte da cercare (es. `DOLOMIA, ACQUA DOLOMIA`) e le immagini del logo.
+  «Cerca anche il disegno del logo» serve per loghi senza scritte o molto stilizzati.
+- **Aggiungi sponsor**: per un'azienda nuova. Se la cartella su MEGA non c'è, viene creata alla prima copia.
+- **Prova su una foto**: carichi una foto e vedi cosa legge e quali sponsor trova.
+- **Metti in pausa**: lo sponsor non viene più cercato, senza perdere le impostazioni.
+
+Nello smistamento resta spuntato «Cerca anche gli sponsor» (circa un secondo in più a foto). Nella
+revisione, per ogni sponsor, ci sono le foto scelte (logo grande, nitido e leggibile, meglio con
+un nostro giocatore protagonista, niente doppioni della stessa raffica, maglie e cartelloni
+insieme) e le altre in cui c'è il logo: un clic per togliere o aggiungere.
 La pagina **Cartelle** mostra tutte le cartelle caricate dai fotografi e quali sono già state smistate.
 
 ## Nuovo computer
@@ -74,8 +98,10 @@ nel programma (`smistafoto/mega.py`), controllate prima di ogni comando:
 - **Non cancella, non sposta e non rinomina nulla su MEGA.** Non esiste nessuna funzione che lo faccia.
 - **Non sovrascrive mai**: prima di ogni copia verifica che il file non esista già; nel dubbio non copia.
 - **Scrive solo in `PLAYERS/<NOME>/<COMPETIZIONE>/<EVENTO>/`** oppure direttamente in
-  `PLAYERS/<NOME>/ALLENAMENTI/` (le «cartelle uniche» di `config.json`, senza sottocartelle).
-  Le cartelle dei fotografi vengono solo lette.
+  `PLAYERS/<NOME>/ALLENAMENTI/` (le «cartelle uniche» di `config.json`, senza sottocartelle), e
+  con le stesse regole in `SPONSOR/<NOME>/<COMPETIZIONE>/<EVENTO>/` o `SPONSOR/<NOME>/ALLENAMENTI/`.
+  La cartella SPONSOR deve essere specifica e separata da PLAYERS. Le cartelle dei fotografi
+  vengono solo lette e non possono stare dentro PLAYERS o SPONSOR.
 - Percorsi con `..` o caratteri jolly (`*`, `?`) sono rifiutati.
 - L'interfaccia risponde solo da questo computer (`127.0.0.1`).
 
@@ -92,6 +118,9 @@ permessi dell'account. Nella finestra di MEGAcmd non va scritto nessun comando o
   pensato per l'uso commerciale): https://huggingface.co/fal/AuraFace-v1. Si usa solo il file
   di riconoscimento (`glintr100.onnx`); gli altri file di quel repository non hanno una licenza
   indicata e non si usano. Si scarica da solo al primo avvio in `modelli/`.
+- Le **scritte degli sponsor** si leggono con i modelli PP-OCRv3 di PaddleOCR (Apache 2.0,
+  inclusi in `modelli/testo_*`), eseguiti con OpenCV: nessun programma in più da installare.
+  Il disegno del logo si cerca con SIFT (OpenCV).
 - Una foto va a una persona solo se lì è **almeno un po' protagonista** (volto tra i più grandi
   della foto, non minuscolo, abbastanza a fuoco). La regola predefinita è stata scelta con le
   prove sulle partite; si può ritarare da **Prove e regole**.
@@ -111,13 +140,15 @@ Non modificare `config.json` a mano: le scelte fatte dall'app vanno in
 | `prefisso_fotografo` | aggiunge il nome della sottocartella del fotografo al file |
 | `modello` | `auraface` (predefinito) oppure `sface` (più leggero, meno preciso) |
 | `soglie`, `protagonista` | la regola predefinita; di solito si cambia da «Prove e regole» |
+| `cartella_sponsor` | facoltativa: di solito si trova da sola (`SPONSOR` nella cartella della stagione) |
+| `lato_lungo_sponsor` | a che dimensione si leggono le scritte (predefinito 2048 px) |
 
 ## Privacy
 
 - Le «impronte» dei volti sono numeri, non foto, e restano solo in `dati/`, solo per giocatori e staff.
 - I volti non riconosciuti (avversari, tifosi) vengono scartati subito.
 - Le foto scaricate per l'analisi vengono cancellate subito dopo; restano solo miniature in `lavori/`.
-- `dati/`, `lavori/` e `primi_piani/` sono esclusi dal repository.
+- `dati/`, `lavori/`, `primi_piani/` e `loghi/` sono esclusi dal repository.
 
 ## Struttura
 
@@ -125,6 +156,7 @@ Non modificare `config.json` a mano: le scelte fatte dall'app vanno in
 smista.py                 avvio
 smistafoto/mega.py        accesso a MEGA con le regole di sicurezza
 smistafoto/volti.py       riconoscimento dei volti
+smistafoto/sponsor.py     sponsor: lettura delle scritte, disegno del logo, scelta delle foto migliori
 smistafoto/flussi.py      imparare, analizzare, simulare, copiare, provare
 smistafoto/app.py         server locale dell'interfaccia
 smistafoto/web/           interfaccia (HTML, CSS, JavaScript, guida)
@@ -134,6 +166,7 @@ installazione/            icona dell'app (scudetto del Cesena FC) per Mac e Wind
 
 ## Versioni
 
+- **3.4** (26 novembre 2026): sponsor. Pagina «Sponsor» (scritte da cercare, loghi, foto a partita e ad allenamento, pausa, prova su una foto); nello smistamento Smista Foto legge le scritte e propone le foto migliori per ogni sponsor, che vanno in SPONSOR/<NOME>/<COMPETIZIONE>/<EVENTO> o SPONSOR/<NOME>/ALLENAMENTI dopo la revisione, con la stessa simulazione e le stesse regole di sicurezza; i loghi passano su un altro computer con «Esporta i volti». Richiede OpenCV 5: «Aggiorna» lo installa da solo.
 - **3.3.1** (13 novembre 2026): i modelli si caricano anche se il percorso della cartella contiene lettere accentate (es. «OneDrive - Università di …» su Windows); avviso, nell'app e nell'installazione, se Smista Foto è dentro OneDrive, iCloud, Dropbox o Google Drive.
 - **3.3** (12 novembre 2026): «Esporta i volti» e «Importa i volti» per portare volti, primi piani e regole su un altro computer senza rifare l'apprendimento; copia di sicurezza automatica prima di importare; il test di sicurezza verifica che un archivio manomesso venga rifiutato.
 - **3.2.1** (12 novembre 2026): «Aggiorna» funziona anche quando la cronologia del repository viene ripulita.

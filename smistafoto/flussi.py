@@ -14,6 +14,7 @@ import numpy as np
 from PIL import Image
 
 from .mega import e_foto
+from .sponsor import impronta_visiva, numero_scatto, scegli_migliori, sponsor_nella_foto
 from .volti import e_protagonista, protagonista, soglie, volto_ricorrente
 
 
@@ -370,7 +371,9 @@ def trova_cartella_esistente(conn, rif, competizione, evento):
 # ---------------------------------------------------------------- analisi
 
 def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
-                      cartella_lavori, reg, prova_su=None):
+                      cartella_lavori, reg, prova_su=None, sponsor=None):
+    """sponsor (facoltativo): {"attivi": {nome: impostazioni}, "lettore": Lettore,
+    "loghi": Loghi o None, "radice": cartella SPONSOR su MEGA}."""
     if not rif.impronte:
         raise RuntimeError("Prima bisogna imparare i volti.")
     unica = e_unica(cfg, competizione)
@@ -399,7 +402,10 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
     regola = protagonista(cfg)
     reg.info("Protagonista se: " + descrivi_regola(regola) + ".")
     foto, lista_volti, impronte = [], [], []
-    reg.inizia_fase("Riconosco i volti", len(remote))
+    persone_foto, impronte_visive = {}, {}
+    if sponsor:
+        reg.info("Cerco anche gli sponsor: " + ", ".join(sponsor["attivi"]) + ".")
+    reg.inizia_fase("Riconosco volti e sponsor" if sponsor else "Riconosco i volti", len(remote))
     illeggibili = nomi_trovati = 0
     for i, r in enumerate(remote, 1):
         rel = posixpath.relpath(r, sorgente)
@@ -418,7 +424,8 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
                      "nome_dest": _nome_destinazione(cfg, rel, prefisso), "anteprima": anteprima})
         presenti = {}
         largo_max = trovati[0]["riquadro"][2] if trovati else 1
-        for v in trovati:
+        volto_di = {}  # indice del volto nella foto -> voce in lista_volti
+        for indice_volto, v in enumerate(trovati):
             classifica = rif.classifica(v["impronta"])
             if not classifica or classifica[0][0] < soglia_d:
                 continue  # sconosciuto (avversari, tifosi): non si salva nulla
@@ -450,6 +457,30 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
                     presenti[n1] = vid
             lista_volti.append(voce)
             impronte.append(v["impronta"])
+            volto_di[indice_volto] = voce
+        if sponsor and img is not None:
+            protagonisti = {k for k, voce in volto_di.items()
+                            if voce["stato"] == "sicuro" and rif.info.get(voce["persona"], {}).get("tipo") == "giocatore"}
+            persone_foto[fid] = sorted({volto_di[k]["persona"] for k in protagonisti})
+            impronte_visive[fid] = impronta_visiva(img)
+            try:
+                letture = sponsor["lettore"].leggi(img, cfg.get("lato_lungo_sponsor", 2048))
+                disegni = sponsor["loghi"].cerca(img) if sponsor.get("loghi") else {}
+                trovati_s = sponsor_nella_foto(img, letture, disegni, sponsor["attivi"], trovati, protagonisti)
+            except Exception as e:  # una foto strana non deve fermare l'analisi
+                reg.avviso(f"{rel}: non riesco a cercare gli sponsor ({e}).")
+                trovati_s = {}
+            if trovati_s:
+                H, W = img.shape[:2]
+                for k, (nome_s, t) in enumerate(trovati_s.items()):
+                    # miniatura centrata sul logo, con un po' di contesto: nella revisione si vede subito
+                    bx, by, bw, bh = t["box"][0] * W, t["box"][1] * H, t["box"][2] * W, t["box"][3] * H
+                    lw = max(bw * 1.6, bh * 6, 0.22 * W)
+                    lh = lw * 0.75
+                    t["mini"] = f"s{fid}_{k}.jpg"
+                    _salva_ritaglio(img, [bx + bw / 2 - lw / 2, by + bh / 2 - lh / 2, lw, lh],
+                                    os.path.join(mini_dir, t["mini"]), 360)
+                foto[-1]["sponsor"] = trovati_s
         # nome scritto nel file dal fotografo: SOLO un suggerimento (a volte è sbagliato).
         # Non rende mai sicura un'assegnazione e non cambia quelle del riconoscimento.
         for persona in nomi_nel_file(posixpath.basename(r), rif.info):
@@ -470,13 +501,27 @@ def analizza_cartella(cfg, conn, volti, rif, sorgente, competizione, evento,
     if illeggibili:
         reg.avviso(f"{illeggibili} foto non si sono potute aprire (formato non supportato o download fallito).")
 
+    sponsor_lavoro = {}
+    if sponsor:
+        for nome, imp in sponsor["attivi"].items():
+            candidate = sorted(({"foto": f["id"], **f["sponsor"][nome]} for f in foto if nome in f.get("sponsor", {})),
+                               key=lambda c: -c["punteggio"])
+            quante = imp["foto_allenamento"] if unica else imp["foto_partita"]
+            sponsor_lavoro[nome] = {
+                "cartella": posixpath.join(sponsor["radice"], nome), "quante": quante,
+                "candidate": candidate,
+                "scelte": scegli_migliori(candidate, quante, impronte_visive, persone_foto,
+                                          {f["id"]: numero_scatto(f["relativo"]) for f in foto})}
+            reg.info(f"{nome}: logo in {len(candidate)} foto, scelte le {min(quante, len(candidate))} migliori"
+                     + (" (nessuna foto con il logo)." if not candidate else "."))
+
     lavoro = {"sorgente": sorgente, "competizione": competizione, "evento": evento, "unica": unica,
               "creato": time.strftime("%d/%m/%Y %H:%M"), "prova_su": prova_su,
               "modello": volti.nome, "margine": margine, "soglia_sicura": soglia_s,
               "protagonista": regola,
               "persone": {n: i["tipo"] for n, i in sorted(rif.info.items())},
               "cartelle_persone": {n: i["cartella"] for n, i in rif.info.items()},
-              "foto": foto, "volti": lista_volti, "copiato": False}
+              "foto": foto, "volti": lista_volti, "copiato": False, "sponsor": sponsor_lavoro}
     with open(os.path.join(lavoro_dir, "lavoro.json"), "w", encoding="utf-8") as f:
         json.dump(lavoro, f, ensure_ascii=False)
     np.save(os.path.join(lavoro_dir, "impronte.npy"),
@@ -642,10 +687,23 @@ def panoramica(cfg, conn, rif, cartella_lavori, cartella_dati, reg, campione=12)
 # ---------------------------------------------------------------- copia
 
 def _piano(lavoro, decisioni):
-    """{cartella di destinazione: [(foto, persona), ...]} dalle decisioni della revisione."""
+    """{cartella di destinazione: [(foto, persona), ...]} dalle decisioni della revisione.
+    Una decisione è {foto, persona} oppure {foto, sponsor}: per gli sponsor la cartella
+    è SPONSOR/<NOME>/<COMPETIZIONE>/<EVENTO> (o SPONSOR/<NOME>/ALLENAMENTI)."""
     foto = {f["id"]: f for f in lavoro["foto"]}
     piano, visti = {}, set()
     for d in decisioni:
+        if d.get("sponsor"):
+            nome = d["sponsor"]
+            if nome not in lavoro.get("sponsor", {}) or ("S", int(d["foto"]), nome) in visti:
+                continue
+            visti.add(("S", int(d["foto"]), nome))
+            cartella = posixpath.join(lavoro["sponsor"][nome]["cartella"], lavoro["competizione"],
+                                      *([] if lavoro.get("unica") else [lavoro["evento"]]))
+            piano.setdefault(cartella, []).append((foto[int(d["foto"])], f"{nome} (sponsor)"))
+            continue
+        if not d.get("persona"):
+            continue
         chiave = (int(d["foto"]), d["persona"])
         if chiave in visti or d["persona"] not in lavoro["cartelle_persone"]:
             continue
