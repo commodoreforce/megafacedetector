@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
 from . import DATA_VERSIONE, VERSIONE
+from .aggiornamento import CODICE_RIAVVIO, metodo as metodo_aggiornamento, novita, scarica_versione
 from .archivio import esporta, importa
 from .flussi import (e_unica, panoramica, analizza_cartella, calibra_insieme, carica_lavoro, confronta, deboli, elenca_lavori,
                      esegui_copia, impara, ricava_evento, simula_copia, trova_cartella_esistente)
@@ -71,6 +72,15 @@ class App:
         self.radice_sponsor = None      # es. /2026-27/SPONSOR, trovata su MEGA al collegamento
         self.sponsor_su_mega = []       # le cartelle sponsor che esistono su MEGA
         self.lettore = None
+        # aggiornamenti: esito dell'ultimo (lo passa il programma di avvio) e novità su GitHub
+        esito = os.environ.get("SMISTA_ESITO_AGGIORNAMENTO", "")
+        self.esito_aggiornamento = esito or None
+        if esito.startswith("ok|"):
+            self.reg.ok(f"Smista Foto è stato aggiornato alla versione {VERSIONE}.")
+        elif esito.startswith("annullato|"):
+            self.reg.avviso("Aggiornamento annullato: " + esito.split("|", 2)[2] + f" Resta la versione {VERSIONE}.")
+        self.info_aggiornamento = None
+        self._ultimo_controllo_agg = 0
 
     # ------------------------------------------------------------ attività
 
@@ -194,6 +204,39 @@ class App:
                         "Nella pagina Sponsor puoi aggiungere i loghi e scegliere quante foto prendere.")
         elif not silenzioso and self.sponsor.attivi():
             self.reg.info(f"Sponsor: {len(self.sponsor.attivi())} attivi, cartella {radice}.")
+
+    # ------------------------------------------------------------ aggiornamento del programma
+
+    def controlla_aggiornamento(self, forza=False):
+        """Chiede a GitHub qual è l'ultima versione (al massimo ogni 6 ore, se non forzato)."""
+        if not forza and time.time() - self._ultimo_controllo_agg < 6 * 3600 and self.info_aggiornamento:
+            return self.info_aggiornamento
+        self._ultimo_controllo_agg = time.time()
+        try:
+            info = novita(VERSIONE)
+            info["metodo"] = metodo_aggiornamento(self.qui)
+            info["errore"] = None
+            if info["disponibile"] and (not self.info_aggiornamento or not self.info_aggiornamento.get("disponibile")):
+                self.reg.info(f"È disponibile la versione {info['nuova']} di Smista Foto: in basso a sinistra c'è «Aggiorna».")
+        except Exception as e:
+            info = {"attuale": VERSIONE, "disponibile": False, "errore": f"Non riesco a controllare gli aggiornamenti ({e})."}
+        self.info_aggiornamento = info
+        return info
+
+    def aggiorna_programma(self):
+        if not os.environ.get("SMISTA_CONTROLLORE"):
+            raise RuntimeError("Per aggiornare dall'app chiudi Smista Foto e riaprilo dall'icona sulla Scrivania, poi riprova.")
+        if self.attivita["in_corso"]:
+            raise RuntimeError("C'è un'attività in corso: aggiorna quando ha finito.")
+
+        def lavoro():
+            self.reg.inizia_fase("Aggiorno Smista Foto")
+            self.attivita["risultato"] = {"versione": scarica_versione(self.qui, VERSIONE, self.reg)}
+            # il programma di avvio aggiorna i componenti ad app chiusa e la riapre
+            global CODICE_USCITA
+            CODICE_USCITA = CODICE_RIAVVIO
+            threading.Timer(2.5, self.server.shutdown).start()
+        self.avvia("aggiornamento", lavoro)
 
     def _prepara_lettore(self):
         if self.lettore is None:
@@ -552,6 +595,8 @@ class App:
                 "persone": {"giocatori": g, "staff": len(self.rif.info) - g, "deboli": deboli(self.rif)},
                 "elenco": self._lista_persone(), "esclusi": sorted(self.esclusi),
                 "sponsor": {"attivi": len(self.sponsor.attivi()), "radice": self.radice_sponsor},
+                "aggiornamento": dict(self.info_aggiornamento or {}, esito=self.esito_aggiornamento,
+                                      dall_app=bool(os.environ.get("SMISTA_CONTROLLORE"))),
                 "attivita": a, "registro": self.reg.stato(dalla),
                 "lavori": self._lavori()}
 
@@ -627,6 +672,14 @@ def avvia_app(qui, apri=True):
     print("  Tieni aperta questa finestra del Terminale finché usi Smista Foto:")
     print("  chiudendola si chiude anche l'app. Qui sotto scorre il registro.\n")
     app.collega()
+    # controllo degli aggiornamenti: poco dopo l'avvio e poi ogni 6 ore (solo lettura da GitHub)
+    def controlla_spesso():
+        while True:
+            app.controlla_aggiornamento()
+            time.sleep(6 * 3600 + 60)
+    primo_controllo = threading.Timer(8, lambda: threading.Thread(target=controlla_spesso, daemon=True).start())
+    primo_controllo.daemon = True
+    primo_controllo.start()
     if apri:
         threading.Timer(0.8, lambda: _apri_finestra(url)).start()
     app.server = server
@@ -637,6 +690,8 @@ def avvia_app(qui, apri=True):
     server.server_close()
     print("Smista Foto chiuso.")
 
+
+CODICE_USCITA = 0  # 75 = riavviare dopo l'aggiornamento (lo legge smista.py)
 
 WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 
@@ -723,6 +778,8 @@ def _gestore(app):
                     self._invia(app.stato(dalla))
                 elif parti == ["api", "cartelle"]:
                     self._invia(app.ultima_panoramica() or {})
+                elif parti == ["api", "aggiornamento"]:
+                    self._invia(app.controlla_aggiornamento(forza=True))
                 elif parti == ["api", "sponsor"]:
                     self._invia(app.dati_sponsor())
                 elif parti[0] == "logo" and len(parti) == 3:
@@ -796,6 +853,8 @@ def _gestore(app):
                     r = app.controlla(c.get("percorso", ""), bool(c.get("prova")))
                 elif parti == ["api", "smista"]:
                     app.smista(c["sorgente"], c["competizione"], c["evento"], cerca_sponsor=c.get("sponsor", True))
+                elif parti == ["api", "aggiorna"]:
+                    app.aggiorna_programma()
                 elif parti == ["api", "sponsor-salva"]:
                     r = app.salva_sponsor(c)
                 elif parti == ["api", "sponsor-elimina"]:

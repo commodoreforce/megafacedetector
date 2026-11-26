@@ -1,15 +1,20 @@
 @echo off
 rem Smista Foto - avvio. Tieni aperta questa finestra finche' usi l'app.
-chcp 65001 >nul
-title Smista Foto (lascia aperta questa finestra)
-cd /d "%~dp0"
-if not exist .venv\Scripts\python.exe (
-  echo Smista Foto non e' ancora installato su questo computer.
-  echo Fai doppio clic su "Installa_Windows.bat", in questa stessa cartella.
+rem Tutto e' in un blocco tra parentesi: Windows lo legge per intero prima di eseguirlo,
+rem cosi' un aggiornamento che sostituisce questo file mentre l'app e' aperta non crea problemi.
+(
+  chcp 65001 >nul
+  title Smista Foto - lascia aperta questa finestra
+  cd /d "%~dp0"
+  if not exist .venv\Scripts\python.exe (
+    echo Smista Foto non e' ancora installato su questo computer.
+    echo Fai doppio clic su "Installa_Windows.bat", in questa stessa cartella.
+    pause
+    exit /b 1
+  )
+  .venv\Scripts\python smista.py
+  echo.
+  echo Smista Foto e' chiuso.
   pause
-  exit /b 1
+  exit /b
 )
-.venv\Scripts\python smista.py
-echo.
-echo Smista Foto e' chiuso.
-pause

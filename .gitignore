@@ -14,3 +14,6 @@ SmistaFoto_volti_*.zip
 .importazione_tmp/
 .dati_prima_di_importare/
 loghi/
+.aggiornamento.json
+.aggiornamento_backup/
+.requisiti_installati

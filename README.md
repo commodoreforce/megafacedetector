@@ -1,6 +1,6 @@
 # Smista Foto · Cesena FC
 
-Versione **3.4** · 26 novembre 2026
+Versione **3.5** · 26 novembre 2026
 
 Smista Foto guarda le foto caricate dai fotografi su MEGA, riconosce giocatori e staff e
 copia ogni foto nella cartella personale di chi ne è protagonista:
@@ -85,8 +85,22 @@ mai su GitHub, per email o in chat, e cancellalo dopo l'uso.
 
 ## Aggiornamento
 
-Doppio clic su **`Aggiorna_Mac.command`** o **`Aggiorna_Windows.bat`**. Le scelte fatte
-nell'app (`dati/`), le analisi (`lavori/`) e i primi piani (`primi_piani/`) restano.
+Dentro l'app, in basso a sinistra, c'è il pulsante **Aggiorna**: diventa giallo quando su
+GitHub c'è una versione nuova (il controllo è automatico all'avvio e ogni 6 ore). Mostra le novità
+e, con **Aggiorna ora**:
+
+1. scarica i file nuovi (con git se la cartella è una copia git, altrimenti con lo zip di GitHub);
+2. chiude l'app e aggiorna i componenti Python (`requirements.txt`) ad app chiusa, perché su
+   Windows i componenti in uso non si possono sostituire;
+3. riapre l'app, e la pagina si ricarica da sola.
+
+Se lo scaricamento dei componenti non riesce, o se la nuova versione non parte, torna da solo
+alla versione di prima. Le scelte fatte nell'app (`dati/`), le analisi (`lavori/`), i primi piani,
+i loghi e l'ambiente Python (`.venv/`) non vengono toccati. Su MEGA non cambia nulla.
+
+Il pulsante funziona quando l'app è aperta con l'icona sulla Scrivania (o con `Avvia_*`). Se l'app
+non si apre, restano **`Aggiorna_Mac.command`** e **`Aggiorna_Windows.bat`** nella cartella di
+Smista Foto. MEGAcmd si aggiorna a parte, dal sito di MEGA.
 
 ## Sicurezza dell'archivio
 
@@ -153,7 +167,8 @@ Non modificare `config.json` a mano: le scelte fatte dall'app vanno in
 ## Struttura
 
 ```
-smista.py                 avvio
+smista.py                 avvio: apre l'app e, dopo un aggiornamento, aggiorna i componenti e la riapre
+smistafoto/aggiornamento.py  aggiornamento del programma da GitHub
 smistafoto/mega.py        accesso a MEGA con le regole di sicurezza
 smistafoto/volti.py       riconoscimento dei volti
 smistafoto/sponsor.py     sponsor: lettura delle scritte, disegno del logo, scelta delle foto migliori
@@ -166,6 +181,7 @@ installazione/            icona dell'app (scudetto del Cesena FC) per Mac e Wind
 
 ## Versioni
 
+- **3.5** (26 novembre 2026): pulsante «Aggiorna» dentro l'app (in basso a sinistra): controlla da solo se c'è una versione nuova, mostra le novità, scarica la versione da GitHub (con git o con lo zip), aggiorna i componenti ad app chiusa e la riapre; se qualcosa non va torna alla versione di prima. Gli script di avvio e di aggiornamento ora si possono sostituire anche mentre sono aperti.
 - **3.4** (26 novembre 2026): sponsor. Pagina «Sponsor» (scritte da cercare, loghi, foto a partita e ad allenamento, pausa, prova su una foto); nello smistamento Smista Foto legge le scritte e propone le foto migliori per ogni sponsor, che vanno in SPONSOR/<NOME>/<COMPETIZIONE>/<EVENTO> o SPONSOR/<NOME>/ALLENAMENTI dopo la revisione, con la stessa simulazione e le stesse regole di sicurezza; i loghi passano su un altro computer con «Esporta i volti». Richiede OpenCV 5: «Aggiorna» lo installa da solo.
 - **3.3.1** (13 novembre 2026): i modelli si caricano anche se il percorso della cartella contiene lettere accentate (es. «OneDrive - Università di …» su Windows); avviso, nell'app e nell'installazione, se Smista Foto è dentro OneDrive, iCloud, Dropbox o Google Drive.
 - **3.3** (12 novembre 2026): «Esporta i volti» e «Importa i volti» per portare volti, primi piani e regole su un altro computer senza rifare l'apprendimento; copia di sicurezza automatica prima di importare; il test di sicurezza verifica che un archivio manomesso venga rifiutato.

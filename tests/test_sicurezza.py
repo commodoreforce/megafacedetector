@@ -193,7 +193,7 @@ for nome in os.listdir(cartella):
             if c not in mega.COMANDI_CONSENTITI:
                 print(f"ERRORE: {nome} usa il comando {c}")
                 errori += 1
-        if "subprocess" in testo and nome not in ("mega.py", "finestra.py"):
+        if "subprocess" in testo and nome not in ("mega.py", "finestra.py", "aggiornamento.py"):
             print(f"ERRORE: {nome} esegue comandi esterni")
             errori += 1
         if nome == "finestra.py" and "mega" in testo.lower().replace("non ha niente a che fare con mega", ""):
@@ -203,11 +203,18 @@ for nome in os.listdir(cartella):
         # flussi.py cancella le foto temporanee scaricate, volti.py salva il modello scaricato,
         # archivio.py e app.py sostituiscono dati/ e primi_piani/ quando si importano i volti
         for vietato in ("os.remove(", "shutil.rmtree(", "os.rename(", "os.replace("):
-            if vietato in testo and nome not in ("flussi.py", "volti.py", "archivio.py", "app.py", "sponsor.py"):
+            if vietato in testo and nome not in ("flussi.py", "volti.py", "archivio.py", "app.py", "sponsor.py",
+                                                 "aggiornamento.py"):
                 print(f"ERRORE: {nome} contiene {vietato}")
                 errori += 1
 
-        if nome in ("archivio.py", "sponsor.py") and re.search(r"^\s*(from|import)\s+\S*mega", testo, re.M):
+        if nome == "aggiornamento.py":
+            # l'aggiornamento esegue solo git (sui file del programma) e mai i comandi di MEGAcmd
+            chiamate = re.findall(r"subprocess\.(\w+)\(\[(\w+)", testo)
+            if "mega-" in testo or any(c[1] != "git" for c in chiamate) or len(chiamate) != 1:
+                print("ERRORE: aggiornamento.py deve eseguire solo git", chiamate)
+                errori += 1
+        if nome in ("archivio.py", "sponsor.py", "aggiornamento.py") and re.search(r"^\s*(from|import)\s+\S*mega", testo, re.M):
             print(f"ERRORE: {nome} non deve poter raggiungere MEGA")
             errori += 1
 
@@ -275,8 +282,54 @@ with tempfile.TemporaryDirectory() as t:
     if open(os.path.join(b, "dati", "riferimenti_auraface.json")).read() != '{"BIANCHI": {}}':
         print("ERRORE: un archivio rifiutato ha cambiato i volti"); errori += 1
 
+# 10. aggiornamento con lo zip di GitHub: non tocca mai le cartelle dei dati, rifiuta percorsi
+#     che escono dalla cartella e si può annullare
+from smistafoto import aggiornamento  # noqa: E402
+import io  # noqa: E402
+
+with tempfile.TemporaryDirectory() as t:
+    qui = os.path.join(t, "app")
+    os.makedirs(os.path.join(qui, "smistafoto")); os.makedirs(os.path.join(qui, "dati")); os.makedirs(os.path.join(qui, "loghi", "AMADORI"))
+    open(os.path.join(qui, "smista.py"), "w").write("vecchio")
+    open(os.path.join(qui, "smistafoto", "__init__.py"), "w").write('VERSIONE = "1.0"\n')
+    open(os.path.join(qui, "requirements.txt"), "w").write("numpy\n")
+    open(os.path.join(qui, "dati", "riferimenti_auraface.json"), "w").write("VOLTI")
+    open(os.path.join(qui, "loghi", "AMADORI", "logo.png"), "w").write("LOGO")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zz:
+        for n, c in [("smista.py", "nuovo"), ("smistafoto/__init__.py", 'VERSIONE = "9.9"\n'), ("requirements.txt", "numpy\nnuovo\n"),
+                     ("smistafoto/nuovo.py", "x"), ("dati/riferimenti_auraface.json", "SOVRASCRITTO"),
+                     ("loghi/AMADORI/logo.png", "SOVRASCRITTO"), (".venv/x", "x"), ("../fuori.txt", "x"), ("smistafoto/../../fuori2.txt", "x")]:
+            zz.writestr("megafacedetector-main/" + n, c)
+    originale_scarica, originale_metodo = aggiornamento._scarica, aggiornamento.metodo
+    aggiornamento._scarica = lambda url, attesa=30: (buf.getvalue() if "codeload" in url else
+                                                     b'VERSIONE = "9.9"\n' if "__init__" in url else b"## Versioni\n- **9.9** (oggi): prova\n")
+    aggiornamento.metodo = lambda q: "zip"
+
+    class Muto:
+        def __getattr__(self, n): return lambda *a, **k: None
+    arrivata = aggiornamento.scarica_versione(qui, "1.0", Muto())
+    leggi = lambda *p: open(os.path.join(qui, *p)).read()
+    ok = (arrivata == "9.9" and leggi("smista.py") == "nuovo" and leggi("dati", "riferimenti_auraface.json") == "VOLTI"
+          and leggi("loghi", "AMADORI", "logo.png") == "LOGO" and not os.path.exists(os.path.join(qui, ".venv"))
+          and not os.path.exists(os.path.join(t, "fuori.txt")) and not os.path.exists(os.path.join(t, "fuori2.txt")))
+    print("ok  aggiornamento: file nuovi al loro posto, dati e loghi intatti, percorsi esterni rifiutati" if ok else "ERRORE: aggiornamento zip")
+    errori += 0 if ok else 1
+    stato = _json.load(open(os.path.join(qui, aggiornamento.FILE_STATO), encoding="utf-8"))
+    aggiornamento.ripristina(qui, stato)
+    ok = (leggi("smista.py") == "vecchio" and leggi("requirements.txt") == "numpy\n"
+          and not os.path.exists(os.path.join(qui, "smistafoto", "nuovo.py")) and leggi("dati", "riferimenti_auraface.json") == "VOLTI")
+    print("ok  aggiornamento annullato: torna alla versione di prima" if ok else "ERRORE: ripristino dell'aggiornamento")
+    errori += 0 if ok else 1
+    aggiornamento._scarica, aggiornamento.metodo = originale_scarica, originale_metodo
+for voce in sorted(aggiornamento.PROTETTI - {".git", "installazione.log", ".venv", aggiornamento.CARTELLA_BACKUP, aggiornamento.FILE_STATO}):
+    gi_testo = open(os.path.join(radice, ".gitignore"), encoding="utf-8").read()
+    if voce + "/" not in gi_testo and voce + "/*/" not in gi_testo:
+        print("ERRORE: cartella protetta non esclusa da git:", voce); errori += 1
+
 gi = open(os.path.join(radice, ".gitignore"), encoding="utf-8").read().split()
-for voce in ("dati/", "lavori/", "primi_piani/*/", "loghi/", "backup_volti/", "SmistaFoto_volti_*.zip"):
+for voce in ("dati/", "lavori/", "primi_piani/*/", "loghi/", "backup_volti/", "SmistaFoto_volti_*.zip",
+             ".aggiornamento.json", ".aggiornamento_backup/", ".requisiti_installati"):
     if voce not in gi:
         print("ERRORE: .gitignore non esclude", voce); errori += 1
 

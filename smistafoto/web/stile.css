@@ -420,6 +420,13 @@ tr.in-pausa td:last-child { opacity: 1; }
 .sponsor-vuoti { padding: 4px 14px 12px; }
 .anteprima-sponsor svg .r-sponsor { fill: none; stroke: #3bd16f; stroke-width: 3px; vector-effect: non-scaling-stroke; }
 
+/* ---------- aggiornamento del programma */
+.piede .agg { font-size: 12.5px; }
+.piede .agg.nuovo { background: var(--giallo); color: #000; border-color: var(--giallo); font-weight: 750; }
+.novita { margin: 10px 0 0; padding-left: 18px; }
+.novita li + li { margin-top: 6px; }
+.attesa-agg { display: flex; align-items: center; gap: 14px; }
+.attesa-agg .progresso { flex: 1; }
 @media (max-width: 900px) {
   .app { grid-template-columns: minmax(0, 1fr); }
   .rail, .contenuto { min-width: 0; }

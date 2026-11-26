@@ -132,11 +132,55 @@ applicaTema(memo("tema") || "auto");
 
 /* ================================================================ stato dal server, barra attività, registro */
 let righeLette = 0, eraInCorso = false, ultimaAttivita = null;
+let aggiornando = false;
+
+/* ================================================================ aggiornamento del programma */
+async function finestraAggiornamento() {
+  let g;
+  try { g = await api("/api/aggiornamento"); } catch (e) { return errore(e); }
+  if (g.errore) return modale({titolo: "Aggiornamenti", corpo: `<div class="avviso giallo"><b>Non riesco a controllare</b>${esc(g.errore)} Controlla la connessione a internet e riprova.</div>`});
+  if (!g.disponibile) return modale({titolo: "Smista Foto è aggiornato", corpo: `<p>Hai l'ultima versione, la <b>${esc(g.attuale)}</b>.</p><p class="tenue piccolo">Smista Foto controlla da solo all'avvio e ogni 6 ore: quando esce una versione nuova questo pulsante diventa giallo.</p>`});
+  const dallApp = S?.aggiornamento?.dall_app, occupato = S?.attivita.in_corso;
+  const ok = await modale({titolo: `Nuova versione: ${g.nuova}`, corpo: `<p>Hai la versione ${esc(g.attuale)}. Le novità:</p>
+      <ul class="novita">${g.novita.length ? g.novita.map(n => `<li><b>${esc(n.versione)}</b>: ${esc(n.testo)}</li>`).join("") : "<li>Miglioramenti e correzioni.</li>"}</ul>
+      <div class="avviso info" style="margin-top:16px"><b>Cosa succede</b>Smista Foto scarica la nuova versione da GitHub, aggiorna i suoi componenti e si riapre da solo: di solito 1-3 minuti. Volti imparati, revisioni, sponsor e impostazioni restano. Su MEGA non cambia nulla. Se qualcosa va storto, torna da solo alla versione di prima.</div>
+      ${dallApp ? "" : `<div class="avviso giallo"><b>Serve un ultimo passaggio a mano</b>Chiudi Smista Foto e riaprilo dall'icona sulla Scrivania: da quel momento «Aggiorna» funziona da qui.</div>`}
+      ${occupato ? `<div class="avviso giallo"><b>C'è un'attività in corso</b>Aggiorna quando ha finito.</div>` : ""}`,
+    azioni: [{testo: "Più tardi", valore: false}, {testo: "Aggiorna ora", tipo: "primo", valore: true, disabilitato: !dallApp || occupato}]});
+  if (!ok) return;
+  try { await api("/api/aggiorna", {}); } catch (e) { return errore(e); }
+  attendiAggiornamento(g.attuale);
+}
+function attendiAggiornamento(vecchia) {
+  aggiornando = true;
+  const corpo = document.createElement("div");
+  corpo.innerHTML = `<div class="attesa-agg"><div class="progresso indet"><i></i></div></div>
+    <p id="aggFase" style="margin-top:12px"><b>Scarico la nuova versione…</b></p>
+    <p class="tenue piccolo">Non chiudere la finestra nera: Smista Foto si chiude e si riapre da solo. Quando è pronto, questa pagina si ricarica.</p>`;
+  modale({titolo: "Aggiornamento in corso", corpo, azioni: [], chiudibile: false});
+  const fase = t => { $("#aggFase", corpo).innerHTML = `<b>${t}</b>`; };
+  const inizio = Date.now();
+  const giro = setInterval(async () => {
+    let s = null;
+    try { const r = await fetch("/api/stato?dalla=999999999"); s = r.ok ? await r.json() : null; } catch (e) { /* si sta riavviando */ }
+    if (!s) return fase("Aggiorno i componenti e riapro Smista Foto…");
+    if (s.versione !== vecchia || s.aggiornamento?.esito?.startsWith("annullato")) { clearInterval(giro); location.reload(); return; }
+    if (s.attivita.tipo === "aggiornamento" && !s.attivita.in_corso && s.attivita.errore) {
+      clearInterval(giro); aggiornando = false; modaleAperta?.chiudi(null);
+      return errore(new Error("Aggiornamento non riuscito: " + s.attivita.errore + " Non è cambiato nulla."));
+    }
+    if (s.attivita.tipo === "aggiornamento" && s.attivita.risultato) fase("Versione scaricata: riavvio Smista Foto…");
+    if (Date.now() - inizio > 15 * 60 * 1000) fase("Ci sta mettendo più del solito: guarda la finestra nera per capire cosa succede.");
+  }, 2000);
+}
+$("#bAggiorna").onclick = finestraAggiornamento;
+document.addEventListener("click", e => { if (e.target.closest("#bAggHome")) finestraAggiornamento(); });
+
 async function aggiornaStato() {
   let s;
   try { s = await api("/api/stato?dalla=" + righeLette); }
   catch (e) {
-    $("#faseAtt").textContent = "Smista Foto è chiuso. Per riaprirlo usa l'icona sulla Scrivania.";
+    $("#faseAtt").textContent = aggiornando ? "Aggiornamento: Smista Foto si sta riavviando…" : "Smista Foto è chiuso. Per riaprirlo usa l'icona sulla Scrivania.";
     $("#semaforo").className = "semaforo rosso";
     return;
   }
@@ -148,6 +192,15 @@ async function aggiornaStato() {
 }
 function aggiornaCornice(s) {
   $("#versione").textContent = `Versione ${s.versione} · ${s.modello}`;
+  const g = s.aggiornamento || {};
+  $("#bAggiorna").textContent = g.disponibile ? `Aggiorna alla ${g.nuova}` : "Controlla aggiornamenti";
+  $("#bAggiorna").classList.toggle("nuovo", !!g.disponibile);
+  if (g.esito && !aggiornando && memo("esitoAgg") !== g.esito) {  // dopo il ricaricamento, non prima
+    memo("esitoAgg", g.esito);
+    const [tipo, , motivo] = g.esito.split("|");
+    if (tipo === "ok") avviso(`Smista Foto è aggiornato alla versione ${s.versione}.`, "ok", {durataMs: 12000});
+    else avviso(`Aggiornamento annullato: ${motivo} Resta la versione ${s.versione}.`, "errore");
+  }
   $("#semaforo").className = "semaforo " + s.semaforo;
   $("#megaTitolo").textContent = {verde: "MEGA collegato", giallo: "Controllo MEGA", rosso: "MEGA non collegato"}[s.semaforo];
   $("#megaSub").textContent = s.account || (s.semaforo === "rosso" ? "ricontrollo ogni 15 secondi" : "");
@@ -384,7 +437,7 @@ V.home = {
   mostra(el) { this.el = el; this.chiave = ""; el.innerHTML = `<p class="tenue">Carico…</p>`; },
   aggiorna(s) {
     const pend = s.lavori.filter(l => !l.copiato && !l.prova);
-    const chiave = JSON.stringify([s.cartella_cloud, s.pronto, s.preparazione, s.persone, pend.map(l => l.id), s.regola, s.attivita.in_corso && s.attivita.tipo]);
+    const chiave = JSON.stringify([s.aggiornamento?.disponibile && s.aggiornamento.nuova, s.cartella_cloud, s.pronto, s.preparazione, s.persone, pend.map(l => l.id), s.regola, s.attivita.in_corso && s.attivita.tipo]);
     if (chiave === this.chiave) return; this.chiave = chiave;
     const el = this.el;
     if (!s.pronto) {
@@ -398,7 +451,7 @@ V.home = {
       return;
     }
     const deb = s.persone.deboli;
-    el.innerHTML = `${s.cartella_cloud ? `<div class="avviso giallo" style="margin-bottom:16px"><b>Smista Foto è dentro ${esc(s.cartella_cloud)}</b>I volti imparati e i primi piani sono dati personali di giocatori e staff: così vengono copiati in un cloud esterno al club, e la sincronizzazione può anche bloccare dei file mentre l'app li usa. Chiudi Smista Foto e sposta tutta la cartella fuori (ad esempio in <code>C:\\SmistaFoto</code> su Windows o nella cartella Utente sul Mac), poi ricrea il collegamento sulla Scrivania rilanciando l'installazione. Guida, sezione «Problemi frequenti».</div>` : ""}<div class="benvenuto">
+    el.innerHTML = `${s.aggiornamento?.disponibile ? `<div class="avviso giallo" style="margin-bottom:16px"><b>È disponibile la versione ${esc(s.aggiornamento.nuova)} di Smista Foto</b>Si installa da qui in 1-3 minuti, senza perdere niente. <div class="riga-btn"><button class="btn primo" id="bAggHome">Vedi le novità e aggiorna</button></div></div>` : ""}${s.cartella_cloud ? `<div class="avviso giallo" style="margin-bottom:16px"><b>Smista Foto è dentro ${esc(s.cartella_cloud)}</b>I volti imparati e i primi piani sono dati personali di giocatori e staff: così vengono copiati in un cloud esterno al club, e la sincronizzazione può anche bloccare dei file mentre l'app li usa. Chiudi Smista Foto e sposta tutta la cartella fuori (ad esempio in <code>C:\\SmistaFoto</code> su Windows o nella cartella Utente sul Mac), poi ricrea il collegamento sulla Scrivania rilanciando l'installazione. Guida, sezione «Problemi frequenti».</div>` : ""}<div class="benvenuto">
       <section class="lancio"><img class="scudo" src="/web/scudetto.png" alt="" aria-hidden="true">
         <h1>Nuove foto da smistare?</h1>
         <p style="margin-top:12px">Scegli la cartella di una partita o di un allenamento su MEGA. Smista Foto riconosce giocatori e staff e ti propone dove copiare ogni foto. Non copia niente finché non confermi.</p>

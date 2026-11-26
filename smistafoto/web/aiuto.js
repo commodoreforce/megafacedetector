@@ -22,7 +22,7 @@ V.aiuto = {
     const voci = [
       ["inizio", "Come funziona"], ["configurazione", "Prima configurazione"], ["mega", "Collegamento a MEGA"],
       ["partite", "Smistare una partita"], ["allenamenti", "Smistare un allenamento"], ["revisione", "La revisione"],
-      ["cartelle", "Stato delle cartelle"], ["volti", "Giocatori e staff"], ["sponsor", "Sponsor"], ["sicurezza", "Sicurezza dell'archivio"], ["prove", "Prove e regole"],
+      ["cartelle", "Stato delle cartelle"], ["volti", "Giocatori e staff"], ["sponsor", "Sponsor"], ["sicurezza", "Sicurezza dell'archivio"], ["aggiornare", "Aggiornare Smista Foto"], ["prove", "Prove e regole"],
       ["problemi", "Problemi frequenti"], ["glossario", "Parole usate nell'app"],
     ];
     el.innerHTML = `<div class="aiuto"><nav aria-label="Indice della guida">${voci.map(([id, t]) => `<a href="#/aiuto/${id}">${t}</a>`).join("")}</nav><article>
@@ -99,6 +99,14 @@ V.aiuto = {
 <li><b>Mettere in pausa</b> uno sponsor (per esempio a fine contratto) lo esclude dalle ricerche senza perdere le impostazioni. Su MEGA non cambia nulla.</li></ul>
 <p>Le scritte molto piccole, piegate o coperte sono le più difficili: per queste conviene controllare «Altre foto» nella revisione. Impostazioni e loghi restano su questo computer e passano su un altro con «Esporta i volti».</p></section>
 
+<section id="a-aggiornare"><h2>Aggiornare Smista Foto</h2>
+<p>In basso a sinistra c'è il pulsante <b>Controlla aggiornamenti</b>. Quando esce una versione nuova diventa giallo («Aggiorna alla …») e nella pagina Inizio compare un avviso. Smista Foto controlla da solo all'avvio e ogni 6 ore.</p>
+<ol><li>Premi il pulsante: vedi le novità.</li>
+<li>Premi <b>Aggiorna ora</b>. Smista Foto scarica la nuova versione, si chiude, aggiorna i suoi componenti e si riapre da solo: di solito 1-3 minuti. Non chiudere la finestra nera.</li>
+<li>La pagina si ricarica e compare «Smista Foto è aggiornato».</li></ol>
+<p>Volti imparati, revisioni, sponsor, loghi e impostazioni restano. Su MEGA non cambia nulla. Se l'aggiornamento non va a buon fine (per esempio manca la connessione), Smista Foto torna da solo alla versione di prima e te lo dice.</p>
+<p class="tenue">Se l'app non si apre proprio, nella cartella di Smista Foto ci sono anche <code>Aggiorna_Windows.bat</code> e <code>Aggiorna_Mac.command</code>. MEGAcmd si aggiorna a parte, dal sito di MEGA.</p></section>
+
 <section id="a-sicurezza"><h2>Sicurezza dell'archivio</h2>
 <p>MEGA è l'archivio storico del club, senza altre copie. Per questo Smista Foto ha regole rigide scritte nel programma e controllate prima di ogni comando:</p>
 <ul><li>Usa solo comandi per leggere, scaricare sul computer, creare cartelle e copiare. Qualsiasi altro comando viene rifiutato prima di partire.</li>
@@ -121,7 +129,7 @@ V.aiuto = {
 <tr><td>La cartella di Smista Foto è in OneDrive, iCloud o Dropbox</td><td>Spostala fuori: i volti imparati sono dati personali e non devono finire in un cloud esterno al club, e la sincronizzazione può bloccare i file mentre l'app li usa. Chiudi Smista Foto, sposta tutta la cartella (su Windows ad esempio in <code>C:\\SmistaFoto</code>, sul Mac nella cartella Utente) e rilancia l'installazione per ricreare l'icona sulla Scrivania. Volti e analisi restano, perché si spostano con la cartella.</td></tr>
 <tr><td>Una persona viene confusa con un'altra</td><td>In «Giocatori e staff» aggiungi primi piani di entrambe. Se una cartella contiene soprattutto foto di un altro giocatore, va sistemata su MEGA e reimparata.</td></tr>
 <tr><td>Il Mac dice che il file non si può aprire</td><td>Clic destro sul file, poi «Apri» e di nuovo «Apri». Serve solo la prima volta.</td></tr>
-<tr><td>Aggiornamento: <code>git pull</code> si blocca</td><td>Hai modificato a mano <code>config.json</code>. Scrivi <code>git checkout -- config.json</code> e ripeti <code>git pull</code>. Le scelte fatte dall'app sono in <code>dati/</code> e non si perdono.</td></tr>
+<tr><td>«Aggiornamento annullato»</td><td>Di solito è la connessione: riprova più tardi con il pulsante in basso a sinistra. Smista Foto è rimasto alla versione di prima e funziona come prima. Se succede ancora, la finestra nera mostra il motivo.</td></tr>
 <tr><td>Una copia è stata «bloccata»</td><td>Le regole di sicurezza hanno impedito di scrivere fuori dalle cartelle consentite. Non succede nulla su MEGA. Mandate il riepilogo a chi segue Smista Foto.</td></tr>
 </tbody></table></section>
 

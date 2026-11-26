@@ -1,6 +1,10 @@
 #!/bin/bash
-# Smista Foto · aggiornamento (Mac). Scarica l'ultima versione da GitHub.
+# Smista Foto · aggiornamento (Mac). Di solito non serve: dentro l'app c'è il pulsante
+# «Aggiorna» in basso a sinistra. Questo file resta per i casi in cui l'app non si apre.
 # Le scelte fatte nell'app (cartella dati/), le analisi e i primi piani restano.
+# Tutto è in un blocco { }: bash lo legge per intero prima di eseguirlo, così un
+# aggiornamento che sostituisce questo file mentre è aperto non crea problemi.
+{
 cd "$(dirname "$0")" || exit 1
 G=$'\033[1m'; V=$'\033[32m'; R=$'\033[31m'; N=$'\033[0m'
 echo "${G}SMISTA FOTO · aggiornamento${N}"
@@ -29,3 +33,5 @@ else
   echo "${R}Aggiornamento non riuscito.${N} Controlla la connessione e riprova."
 fi
 read -r -p "Premi Invio per chiudere." _
+exit
+}
